@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "nz-soluciones"
+  },
+  "targets": {
+    "nz-soluciones": {
+      "hosting": {
+        "landing": ["nz-soluciones-landing"],
+        "calculadoras": ["nz-soluciones-calc"]
+      }
+    }
+  }
+}
