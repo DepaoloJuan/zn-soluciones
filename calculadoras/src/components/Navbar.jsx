@@ -12,6 +12,7 @@ export default function Navbar() {
     { label: "Cielorraso", to: "/cielorraso" },
     { label: "Tabique", to: "/tabique" },
     { label: "Presupuesto", to: "/presupuesto" },
+    { label: "Presupuesto libre", to: "/presupuesto-libre" },
   ];
 
   return (
