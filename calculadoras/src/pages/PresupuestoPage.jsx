@@ -1,5 +1,14 @@
 import { useState, useEffect } from "react";
 import { formatQty, formatNumber } from "../data/materials";
+const formatCantidad = (r, budget) => {
+  if (r.id === 'masilla' && budget.masillaRecomendacion?.length > 0) {
+    return budget.masillaRecomendacion.map(b => `${b.cantidad} × ${b.label} (${b.kg} kg)`).join(' + ')
+  }
+  if (r.id === 'cinta' && budget.cintaRecomendacion?.length > 0) {
+    return budget.cintaRecomendacion.map(b => `${b.cantidad} × ${b.label}`).join(' + ')
+  }
+  return `${formatQty(r.qty, r.unit)} ${r.unit === 'unidad' ? 'u.' : r.unit}`
+}
 
 export default function PresupuestoPage() {
   const [budget, setBudget] = useState(null);
@@ -98,8 +107,7 @@ export default function PresupuestoPage() {
                 <tr key={r.id} className="border-b border-gray-100">
                   <td className="py-3 font-medium text-gray-800">{r.name}</td>
                   <td className="py-3 text-center text-gray-600 font-mono">
-                    {formatQty(r.qty, r.unit)}{" "}
-                    {r.unit === "unidad" ? "u." : r.unit}
+                    {formatCantidad(r, budget)}
                   </td>
                   <td className="py-3 text-right text-gray-600 font-mono">
                     {r.price > 0 ? `$${formatNumber(r.price)}` : "—"}

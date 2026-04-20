@@ -51,3 +51,61 @@ export function buildSummaryText(type, m2, waste, materials, prices) {
   lines.push('', `💰 *TOTAL: $${formatNumber(total)}*`, `📊 Costo por m²: $${formatNumber(total / m2)}`, '', '_Calculado con NZ Soluciones_')
   return lines.join('\n')
 }
+
+// ── Recomendador de baldes de masilla ──────────────────────────────────────
+const MASILLA_BALDES = [
+  { label: 'Balde grande',  kg: 32 },
+  { label: 'Balde mediano', kg: 15 },
+  { label: 'Balde chico',   kg: 7  },
+]
+
+export function recommendMasilla(totalKg) {
+  let restante = totalKg
+  const resultado = []
+  for (const balde of MASILLA_BALDES) {
+    const cantidad = Math.floor(restante / balde.kg)
+    if (cantidad > 0) {
+      resultado.push({ ...balde, cantidad })
+      restante = Math.round((restante - cantidad * balde.kg) * 100) / 100
+    }
+  }
+  if (restante > 0) {
+    const ultimo = resultado[resultado.length - 1]
+    const menor = MASILLA_BALDES[MASILLA_BALDES.length - 1]
+    if (ultimo && ultimo.kg === menor.kg) {
+      ultimo.cantidad += 1
+    } else {
+      resultado.push({ ...menor, cantidad: 1 })
+    }
+  }
+  return resultado
+}
+
+// ── Recomendador de rollos de cinta ───────────────────────────────────────
+const CINTA_ROLLOS = [
+  { label: 'Rollo 150 mts', metros: 150 },
+  { label: 'Rollo 75 mts',  metros: 75  },
+  { label: 'Rollo 20 mts',  metros: 20  },
+]
+
+export function recommendCinta(totalMetros) {
+  let restante = totalMetros
+  const resultado = []
+  for (const rollo of CINTA_ROLLOS) {
+    const cantidad = Math.floor(restante / rollo.metros)
+    if (cantidad > 0) {
+      resultado.push({ ...rollo, cantidad })
+      restante = Math.round((restante - cantidad * rollo.metros) * 100) / 100
+    }
+  }
+  if (restante > 0) {
+    const ultimo = resultado[resultado.length - 1]
+    const menor = CINTA_ROLLOS[CINTA_ROLLOS.length - 1]
+    if (ultimo && ultimo.metros === menor.metros) {
+      ultimo.cantidad += 1
+    } else {
+      resultado.push({ ...menor, cantidad: 1 })
+    }
+  }
+  return resultado
+}

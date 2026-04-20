@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { calcQuantity, formatQty, formatNumber, buildSummaryText } from '../data/materials'
+import { calcQuantity, formatQty, formatNumber, buildSummaryText, recommendMasilla, recommendCinta } from '../data/materials'
 
 const WASTE_OPTIONS = [
   { value: 0, label: 'Sin desperdicio' },
@@ -43,7 +43,14 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
       total += subtotal
       return { ...mat, qty, price, subtotal }
     })
-    return { rows, total }
+    const masillaRow = rows.find((r) => r.id === 'masilla')
+    const cintaRow = rows.find((r) => r.id === 'cinta')
+    return {
+      rows,
+      total,
+      masillaRecomendacion: masillaRow ? recommendMasilla(masillaRow.qty) : [],
+      cintaRecomendacion: cintaRow ? recommendCinta(cintaRow.qty) : [],
+    }
   }, [m2Num, effectiveM2, materials, prices])
 
   useEffect(() => {
@@ -56,6 +63,8 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
         waste,
         rows: results.rows,
         total: results.total,
+        masillaRecomendacion: results.masillaRecomendacion,
+        cintaRecomendacion: results.cintaRecomendacion,
         date: new Date().toLocaleDateString('es-AR'),
       }))
     } catch {}
@@ -205,17 +214,43 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
             </div>
 
             {results.rows.map((r) => (
-              <div key={r.id} className="grid grid-cols-[1fr_auto_auto] gap-0 text-sm">
-                <div className="flex items-center gap-2 px-3 py-3 border-b border-nz-border/50 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: r.color }} />
-                  {r.name}
+              <div key={r.id}>
+                <div className="grid grid-cols-[1fr_auto_auto] gap-0 text-sm">
+                  <div className="flex items-center gap-2 px-3 py-3 border-b border-nz-border/50 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: r.color }} />
+                    {r.name}
+                  </div>
+                  <div className="flex items-center px-3 py-3 border-b border-nz-border/50 font-mono font-bold text-nz-green">
+                    {(r.id === 'masilla' || r.id === 'cinta') ? '' : `${formatQty(r.qty, r.unit)} ${r.unit === 'unidad' ? 'u.' : r.unit}`}
+                  </div>
+                  <div className="flex items-center justify-end px-3 py-3 border-b border-nz-border/50 font-mono font-semibold">
+                    {r.price > 0 ? `$${formatNumber(r.subtotal)}` : '—'}
+                  </div>
                 </div>
-                <div className="flex items-center px-3 py-3 border-b border-nz-border/50 font-mono font-bold text-nz-green">
-                  {formatQty(r.qty, r.unit)} {r.unit === 'unidad' ? 'u.' : r.unit}
-                </div>
-                <div className="flex items-center justify-end px-3 py-3 border-b border-nz-border/50 font-mono font-semibold">
-                  {r.price > 0 ? `$${formatNumber(r.subtotal)}` : '—'}
-                </div>
+
+                {/* Recomendación masilla */}
+                {r.id === 'masilla' && results.masillaRecomendacion.length > 0 && (
+                  <div className="px-3 py-2 bg-nz-green/5 border-b border-nz-border/50 flex flex-wrap gap-2">
+                    <span className="text-[11px] text-nz-text2 font-mono uppercase tracking-wide w-full mb-1">Recomendación de compra:</span>
+                    {results.masillaRecomendacion.map((b, i) => (
+                      <span key={i} className="text-[12px] font-mono bg-nz-surface2 border border-nz-border rounded-lg px-2.5 py-1 text-nz-green font-bold">
+                        {b.cantidad} × {b.label} ({b.kg} kg)
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Recomendación cinta */}
+                {r.id === 'cinta' && results.cintaRecomendacion.length > 0 && (
+                  <div className="px-3 py-2 bg-nz-green/5 border-b border-nz-border/50 flex flex-wrap gap-2">
+                    <span className="text-[11px] text-nz-text2 font-mono uppercase tracking-wide w-full mb-1">Recomendación de compra:</span>
+                    {results.cintaRecomendacion.map((b, i) => (
+                      <span key={i} className="text-[12px] font-mono bg-nz-surface2 border border-nz-border rounded-lg px-2.5 py-1 text-nz-green font-bold">
+                        {b.cantidad} × {b.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
 
