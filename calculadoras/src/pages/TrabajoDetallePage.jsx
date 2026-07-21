@@ -137,7 +137,12 @@ export default function TrabajoDetallePage() {
         ← Volver a trabajos
       </button>
 
-      <h1 className="text-2xl font-extrabold mb-1">{trabajo.nombre_cliente}</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-2xl font-extrabold">{trabajo.cliente_nombre}</h1>
+        <Link to={`/clientes/${trabajo.cliente_id}`} className="text-nz-green text-xs font-medium no-underline hover:underline whitespace-nowrap">
+          Ver ficha del cliente →
+        </Link>
+      </div>
       {trabajo.descripcion && <p className="text-nz-text2 text-sm mb-6">{trabajo.descripcion}</p>}
 
       {error && (

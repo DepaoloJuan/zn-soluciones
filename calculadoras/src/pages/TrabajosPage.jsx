@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { getTrabajos, createTrabajo, getClientes, createCliente } from '../lib/api'
 
 const ESTADO_COLOR = {
@@ -13,17 +13,23 @@ const ESTADO_COLOR = {
 }
 
 export default function TrabajosPage() {
+  const location = useLocation()
   const [trabajos, setTrabajos] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showForm, setShowForm] = useState(false)
+  const [showForm, setShowForm] = useState(!!location.state?.clienteId)
   const [descripcion, setDescripcion] = useState('')
   const [creating, setCreating] = useState(false)
   const [clientesList, setClientesList] = useState([])
+  const [busquedaCliente, setBusquedaCliente] = useState('')
   const [modoCliente, setModoCliente] = useState('existente')
-  const [clienteSeleccionado, setClienteSeleccionado] = useState('')
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(location.state?.clienteId ? String(location.state.clienteId) : '')
   const [nombreClienteNuevo, setNombreClienteNuevo] = useState('')
   const [telefonoClienteNuevo, setTelefonoClienteNuevo] = useState('')
+
+  const clientesFiltrados = busquedaCliente
+    ? clientesList.filter((c) => c.nombre.toLowerCase().includes(busquedaCliente.toLowerCase()))
+    : clientesList
 
   async function load() {
     setLoading(true)
@@ -132,16 +138,24 @@ export default function TrabajosPage() {
           </div>
 
           {modoCliente === 'existente' ? (
-            <select
-              value={clienteSeleccionado}
-              onChange={(e) => setClienteSeleccionado(e.target.value)}
-              className="bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
-            >
-              <option value="">Elegí un cliente...</option>
-              {clientesList.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </select>
+            <>
+              <input
+                placeholder="Buscar cliente..."
+                value={busquedaCliente}
+                onChange={(e) => setBusquedaCliente(e.target.value)}
+                className="bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
+              />
+              <select
+                value={clienteSeleccionado}
+                onChange={(e) => setClienteSeleccionado(e.target.value)}
+                className="bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
+              >
+                <option value="">Elegí un cliente...</option>
+                {clientesFiltrados.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            </>
           ) : (
             <>
               <input
@@ -181,19 +195,25 @@ export default function TrabajosPage() {
           <div className="p-6 text-center text-nz-text2 text-sm">Todavía no hay trabajos cargados.</div>
         )}
         {trabajos.map((t) => (
-          <Link
+          <div
             key={t.id}
-            to={`/trabajos/${t.id}`}
-            className="flex items-center justify-between px-4 py-3 border-b border-nz-border/50 last:border-b-0 no-underline text-nz-text hover:bg-nz-green-glow transition-all"
+            className="flex items-center justify-between gap-2 px-4 py-3 border-b border-nz-border/50 last:border-b-0 hover:bg-nz-green-glow transition-all"
           >
-            <div>
+            <Link to={`/trabajos/${t.id}`} className="flex-1 no-underline text-nz-text min-w-0">
               <div className="font-medium text-sm">{t.cliente_nombre}</div>
               {t.descripcion && <div className="text-xs text-nz-text2">{t.descripcion}</div>}
-            </div>
-            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${ESTADO_COLOR[t.estado] || ''}`}>
+            </Link>
+            <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0 ${ESTADO_COLOR[t.estado] || ''}`}>
               {t.estado}
             </span>
-          </Link>
+            <Link
+              to={`/clientes/${t.cliente_id}`}
+              title="Ver ficha del cliente"
+              className="text-nz-text2 text-sm no-underline hover:text-nz-green flex-shrink-0"
+            >
+              👤
+            </Link>
+          </div>
         ))}
       </div>
     </div>

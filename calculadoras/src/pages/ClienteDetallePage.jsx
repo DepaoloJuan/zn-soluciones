@@ -157,6 +157,12 @@ export default function ClienteDetallePage() {
             </div>
             <div className="flex gap-3">
               <button
+                onClick={() => navigate('/trabajos', { state: { clienteId: cliente.id, clienteNombre: cliente.nombre } })}
+                className="text-nz-green text-xs font-medium bg-transparent border-none cursor-pointer hover:underline"
+              >
+                + Nuevo trabajo
+              </button>
+              <button
                 onClick={() => setEditando(true)}
                 className="text-nz-green text-xs font-medium bg-transparent border-none cursor-pointer hover:underline"
               >

@@ -3,24 +3,17 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { authClient } from "../lib/auth";
 
 const NAV_GROUPS = [
-  {
-    label: "Calculadoras",
-    items: [
-      { label: "Cielorraso", to: "/cielorraso" },
-      { label: "Tabique", to: "/tabique" },
-    ],
-  },
-  {
-    label: "Presupuestos",
-    items: [
-      { label: "Presupuesto", to: "/presupuesto" },
-      { label: "Presupuesto libre", to: "/presupuesto-libre" },
-    ],
-  },
   { label: "Trabajos", to: "/trabajos" },
   { label: "Clientes", to: "/clientes" },
   { label: "Agenda", to: "/agenda" },
-  { label: "Materiales", to: "/admin/materiales" },
+  {
+    label: "Herramientas",
+    items: [
+      { label: "Cielorraso", to: "/cielorraso" },
+      { label: "Presupuesto libre", to: "/presupuesto-libre" },
+      { label: "Materiales", to: "/admin/materiales" },
+    ],
+  },
 ];
 
 export default function Navbar() {

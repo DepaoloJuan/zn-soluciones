@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { formatQty, formatNumber } from "../data/materials";
 import { getSetting } from '../lib/api'
 const formatCantidad = (r, budget) => {
@@ -31,10 +32,13 @@ export default function PresupuestoPage() {
       <div className="min-h-screen flex flex-col items-center justify-center text-center px-6 pt-32">
         <div className="text-5xl mb-4 opacity-30">📄</div>
         <h2 className="text-2xl font-bold mb-2">Sin presupuesto</h2>
-        <p className="text-nz-text2 text-sm">
-          Todavía no calculaste ningún presupuesto. Andá a la calculadora y
-          completá los datos.
+        <p className="text-nz-text2 text-sm max-w-[360px]">
+          Esta es una vista previa del último cálculo hecho en la calculadora — no queda guardada acá.
+          Andá a Herramientas → Cielorraso para generar una.
         </p>
+        <Link to="/trabajos" className="text-nz-green text-sm font-medium no-underline hover:underline mt-4">
+          ¿Ya lo guardaste? Buscalo en Trabajos →
+        </Link>
       </div>
     );
   }

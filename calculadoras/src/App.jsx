@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import Navbar from './components/Navbar'
-import HomePage from './pages/HomePage'
 import CielorrasoPage from './pages/CielorrasoPage'
 import TabiquePage from './pages/TabiquePage'
 import PresupuestoPage from './pages/PresupuestoPage'
@@ -30,6 +29,7 @@ function AppContent() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/cielorraso" element={<ProtectedRoute><CielorrasoPage /></ProtectedRoute>} />
+        {/* No linkeada desde el navbar hasta que la calculadora de Tabique esté implementada de verdad */}
         <Route path="/tabique" element={<ProtectedRoute><TabiquePage /></ProtectedRoute>} />
         <Route path="/presupuesto" element={<ProtectedRoute><PresupuestoPage /></ProtectedRoute>} />
         <Route path="/presupuesto-libre" element={<ProtectedRoute><PresupuestoLibrePage /></ProtectedRoute>} />
