@@ -9,6 +9,7 @@ export interface Material {
   color: string
   perM2: number
   round: RoundType
+  price: number
 }
 
 export function calcQuantity(rawQty: number, roundType: RoundType): number {
@@ -82,7 +83,7 @@ export function recommendCinta(totalMetros: number) {
 export async function getMaterials(databaseUrl: string, category: string): Promise<Material[]> {
   const sql = neon(databaseUrl)
   const rows = await sql`
-    SELECT id, name, unit, color, per_m2 as "perM2", round_type as round
+    SELECT id, name, unit, color, per_m2 as "perM2", round_type as round, price
     FROM materials
     WHERE category = ${category}
     ORDER BY sort_order
@@ -90,5 +91,6 @@ export async function getMaterials(databaseUrl: string, category: string): Promi
   return rows.map((r: any) => ({
     ...r,
     perM2: Number(r.perM2),
+    price: Number(r.price),
   })) as Material[]
 }

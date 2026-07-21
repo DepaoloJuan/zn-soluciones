@@ -17,7 +17,7 @@ materiales.patch('/:category/:id', requireAuth, async (c) => {
   const id = c.req.param('id')
   const body = await c.req.json()
 
-  const allowedFields = ['name', 'unit', 'color', 'per_m2', 'round_type', 'sort_order']
+  const allowedFields = ['name', 'unit', 'color', 'per_m2', 'round_type', 'sort_order', 'price']
   const updates = Object.entries(body).filter(([key]) => allowedFields.includes(key))
 
   if (updates.length === 0) {
@@ -41,7 +41,7 @@ materiales.patch('/:category/:id', requireAuth, async (c) => {
 materiales.post('/:category', requireAuth, async (c) => {
   const category = c.req.param('category')
   const body = await c.req.json()
-  const { id, name, unit, color, per_m2, round_type, sort_order } = body
+  const { id, name, unit, color, per_m2, round_type, sort_order, price } = body
 
   if (!id || !name || !unit || !color || typeof per_m2 !== 'number' || !round_type) {
     return c.json({ error: 'Faltan datos obligatorios: id, name, unit, color, per_m2, round_type' }, 400)
@@ -51,8 +51,8 @@ materiales.post('/:category', requireAuth, async (c) => {
 
   try {
     const result = await sql`
-      INSERT INTO materials (id, category, name, unit, color, per_m2, round_type, sort_order)
-      VALUES (${id}, ${category}, ${name}, ${unit}, ${color}, ${per_m2}, ${round_type}, ${sort_order ?? 999})
+      INSERT INTO materials (id, category, name, unit, color, per_m2, round_type, sort_order, price)
+      VALUES (${id}, ${category}, ${name}, ${unit}, ${color}, ${per_m2}, ${round_type}, ${sort_order ?? 999}, ${price ?? 0})
       RETURNING *
     `
     return c.json({ ok: true, material: result[0] }, 201)

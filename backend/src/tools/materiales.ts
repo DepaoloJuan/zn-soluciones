@@ -15,7 +15,7 @@ export const materialesTools = [
   },
   {
     name: 'crear_material',
-    description: 'Agrega un material nuevo a una categoría, con su ratio por m².',
+    description: 'Agrega un material nuevo a una categoría, con su ratio por m² y precio unitario.',
     input_schema: {
       type: 'object',
       properties: {
@@ -26,13 +26,14 @@ export const materialesTools = [
         color: { type: 'string', description: 'Color hex, ej: #1db954' },
         per_m2: { type: 'number' },
         round_type: { type: 'string', enum: ['ceil', 'decimal'] },
+        price: { type: 'number', description: 'Precio unitario del material (default del catálogo)' },
       },
       required: ['category', 'id', 'name', 'unit', 'color', 'per_m2', 'round_type'],
     },
   },
   {
     name: 'actualizar_material',
-    description: 'Actualiza el ratio por m² u otros datos de un material existente.',
+    description: 'Actualiza el ratio por m², el precio unitario u otros datos de un material existente.',
     input_schema: {
       type: 'object',
       properties: {
@@ -40,6 +41,7 @@ export const materialesTools = [
         id: { type: 'string' },
         per_m2: { type: 'number' },
         name: { type: 'string' },
+        price: { type: 'number', description: 'Precio unitario que queda como default del catálogo' },
       },
       required: ['category', 'id'],
     },
@@ -68,11 +70,11 @@ export async function executeMaterialTool(name: string, input: any, databaseUrl:
   }
 
   if (name === 'crear_material') {
-    const { category, id, name: nombreMaterial, unit, color, per_m2, round_type } = input
+    const { category, id, name: nombreMaterial, unit, color, per_m2, round_type, price } = input
     try {
       const result = await sql`
-        INSERT INTO materials (id, category, name, unit, color, per_m2, round_type, sort_order)
-        VALUES (${id}, ${category}, ${nombreMaterial}, ${unit}, ${color}, ${per_m2}, ${round_type}, 999)
+        INSERT INTO materials (id, category, name, unit, color, per_m2, round_type, sort_order, price)
+        VALUES (${id}, ${category}, ${nombreMaterial}, ${unit}, ${color}, ${per_m2}, ${round_type}, 999, ${price ?? 0})
         RETURNING *
       `
       return { material: result[0] }
@@ -86,7 +88,7 @@ export async function executeMaterialTool(name: string, input: any, databaseUrl:
 
   if (name === 'actualizar_material') {
     const { category, id, ...campos } = input
-    const allowedFields = ['name', 'unit', 'color', 'per_m2', 'round_type', 'sort_order']
+    const allowedFields = ['name', 'unit', 'color', 'per_m2', 'round_type', 'sort_order', 'price']
     const updates = Object.entries(campos).filter(([key]) => allowedFields.includes(key))
 
     if (updates.length === 0) return { error: 'No se especificó ningún campo para actualizar' }

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { getMaterials, updateMaterial, createMaterial, deleteMaterial, getSetting, updateSetting } from '../lib/api'
 import ConfirmModal from '../components/ConfirmModal'
 
+// TODO: cuando Tabique deje de ser un placeholder, esto debe volverse un selector/prop
+// (ej. leer ?category= de la URL) en vez de una categoría fija.
 const CATEGORY = 'cielorraso'
 
 export default function MaterialesAdminPage() {
@@ -14,9 +16,11 @@ export default function MaterialesAdminPage() {
   const [materialABorrar, setMaterialABorrar] = useState(null)
   const [borrandoMaterial, setBorrandoMaterial] = useState(false)
   const [editedValues, setEditedValues] = useState({})
+  const [editedPrices, setEditedPrices] = useState({})
+  const [savingPriceId, setSavingPriceId] = useState(null)
 
   const [newMaterial, setNewMaterial] = useState({
-    id: '', name: '', unit: 'unidad', color: '#1db954', per_m2: '', round_type: 'ceil',
+    id: '', name: '', unit: 'unidad', color: '#1db954', per_m2: '', round_type: 'ceil', price: '',
   })
 
   async function load() {
@@ -54,6 +58,22 @@ export default function MaterialesAdminPage() {
     }
   }
 
+  async function handleUpdatePrice(id) {
+    setSavingPriceId(id)
+    try {
+      await updateMaterial(CATEGORY, id, { price: parseFloat(editedPrices[id]) })
+      setEditedPrices((prev) => {
+        const { [id]: _, ...rest } = prev
+        return rest
+      })
+      await load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSavingPriceId(null)
+    }
+  }
+
   async function confirmarBorrarMaterial() {
     setBorrandoMaterial(true)
     try {
@@ -85,8 +105,9 @@ export default function MaterialesAdminPage() {
       await createMaterial(CATEGORY, {
         ...newMaterial,
         per_m2: parseFloat(newMaterial.per_m2),
+        price: parseFloat(newMaterial.price) || 0,
       })
-      setNewMaterial({ id: '', name: '', unit: 'unidad', color: '#1db954', per_m2: '', round_type: 'ceil' })
+      setNewMaterial({ id: '', name: '', unit: 'unidad', color: '#1db954', per_m2: '', round_type: 'ceil', price: '' })
       await load()
     } catch (err) {
       setError(err.message)
@@ -129,6 +150,26 @@ export default function MaterialesAdminPage() {
               >
                 {savingId === m.id && <span className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
                 {savingId === m.id ? '...' : 'Actualizar'}
+              </button>
+            )}
+
+            <span className="text-xs text-nz-text2">$</span>
+            <input
+              type="number"
+              step="0.01"
+              value={editedPrices[m.id] ?? m.price}
+              onChange={(e) => setEditedPrices((prev) => ({ ...prev, [m.id]: e.target.value }))}
+              disabled={savingPriceId === m.id}
+              className="w-24 bg-nz-surface2 border border-nz-border rounded-lg px-2 py-1.5 text-sm text-right outline-none focus:border-nz-green"
+            />
+            {editedPrices[m.id] !== undefined && editedPrices[m.id] !== String(m.price) && (
+              <button
+                onClick={() => handleUpdatePrice(m.id)}
+                disabled={savingPriceId === m.id}
+                className="text-xs bg-nz-green text-black font-semibold rounded-lg px-3 py-1.5 disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
+              >
+                {savingPriceId === m.id && <span className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
+                {savingPriceId === m.id ? '...' : 'Actualizar precio'}
               </button>
             )}
 
@@ -191,6 +232,14 @@ export default function MaterialesAdminPage() {
             value={newMaterial.per_m2}
             onChange={(e) => setNewMaterial({ ...newMaterial, per_m2: e.target.value })}
             required
+            className="flex-1 bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
+          />
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Precio unitario"
+            value={newMaterial.price}
+            onChange={(e) => setNewMaterial({ ...newMaterial, price: e.target.value })}
             className="flex-1 bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
           />
         </div>
