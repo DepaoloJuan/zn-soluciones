@@ -19,7 +19,7 @@ export default function AsistenteWidget() {
   const [enviando, setEnviando] = useState(false)
   const [escuchando, setEscuchando] = useState(false)
   const [modoVoz, setModoVoz] = useState(false)
-  const { conectado, iniciar, detener, itemsMostrados } = useVozLive()
+  const { conectado, iniciar, detener, itemsMostrados, error: errorVoz } = useVozLive()
   const scrollRef = useRef(null)
   const recognitionRef = useRef(null)
 
@@ -32,6 +32,15 @@ export default function AsistenteWidget() {
   useEffect(() => {
     if (open) scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [mensajes, open])
+
+  useEffect(() => {
+    if (errorVoz && modoVoz) {
+      const texto = errorVoz
+      detener()
+      setModoVoz(false)
+      setMensajes((prev) => [...prev, { rol: 'asistente', texto }])
+    }
+  }, [errorVoz])
 
   async function cargarHistorial(limit = 20) {
     setCargandoHistorial(true)
@@ -159,7 +168,12 @@ export default function AsistenteWidget() {
                 setModoVoz(false)
               } else {
                 setModoVoz(true)
-                await iniciar()
+                try {
+                  await iniciar()
+                } catch (err) {
+                  setModoVoz(false)
+                  setMensajes((prev) => [...prev, { rol: 'asistente', texto: `No se pudo iniciar la conversación por voz: ${err.message}` }])
+                }
               }
             }}
             className={`bg-transparent border-none cursor-pointer text-sm px-2 py-1 ${

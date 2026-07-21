@@ -1,32 +1,72 @@
 import { useRef, useState, useCallback } from 'react'
+import { authClient } from '../lib/auth'
 
 // Nota: usamos ScriptProcessorNode porque es más simple de entender y sigue
 // funcionando en todos los navegadores, aunque está deprecado a favor de
 // AudioWorklet. Si más adelante notamos glitches de audio, migramos a eso.
 
+const TIMEOUT_CONEXION_MS = 12000
+
 export function useVozLive() {
   const [conectado, setConectado] = useState(false)
   const [itemsMostrados, setItemsMostrados] = useState([])
+  const [error, setError] = useState(null)
   const wsRef = useRef(null)
   const audioContextRef = useRef(null)
   const streamRef = useRef(null)
   const processorRef = useRef(null)
   const playbackContextRef = useRef(null)
   const nextStartTimeRef = useRef(0)
+  const cierreVoluntarioRef = useRef(false)
+  const timeoutConexionRef = useRef(null)
 
   const iniciar = useCallback(async () => {
-    const wsUrl = import.meta.env.VITE_BACKEND_URL.replace(/^http/, 'ws') + '/api/voz'
+    setError(null)
+    cierreVoluntarioRef.current = false
+
+    // El WebSocket del navegador no soporta headers custom en el handshake,
+    // así que el token de sesión viaja por query string.
+    const { data } = await authClient.getSession()
+    const token = data?.session?.token
+    if (!token) {
+      throw new Error('No se pudo obtener la sesión. Volvé a iniciar sesión.')
+    }
+
+    const wsUrl = `${import.meta.env.VITE_BACKEND_URL.replace(/^http/, 'ws')}/api/voz?token=${encodeURIComponent(token)}`
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
+    let seConecto = false
 
     // Creamos y "despertamos" el contexto de reproducción ya en el gesto del usuario
     playbackContextRef.current = new AudioContext({ sampleRate: 24000 })
     await playbackContextRef.current.resume()
     nextStartTimeRef.current = playbackContextRef.current.currentTime
 
-    ws.onopen = () => setConectado(true)
-    ws.onclose = () => setConectado(false)
-    ws.onerror = (e) => console.error('Error WS voz:', e)
+    timeoutConexionRef.current = setTimeout(() => {
+      if (!seConecto) {
+        console.error('Timeout conectando WS voz: no se recibió onopen a tiempo')
+        setError('No se pudo conectar la voz (tiempo de espera agotado). Probá de nuevo.')
+        ws.close()
+      }
+    }, TIMEOUT_CONEXION_MS)
+
+    ws.onopen = () => {
+      seConecto = true
+      clearTimeout(timeoutConexionRef.current)
+      setConectado(true)
+    }
+    ws.onclose = () => {
+      clearTimeout(timeoutConexionRef.current)
+      setConectado(false)
+      if (!cierreVoluntarioRef.current) {
+        console.error('WS voz cerrado inesperadamente (seConecto=%s)', seConecto)
+        setError('Se cortó la conexión de voz. Probá de nuevo.')
+      }
+    }
+    ws.onerror = (e) => {
+      console.error('Error WS voz:', e)
+      setError('Error de conexión de voz. Probá de nuevo.')
+    }
 
     ws.onmessage = async (event) => {
       let data = event.data
@@ -120,6 +160,8 @@ export function useVozLive() {
   }, [])
 
   const detener = useCallback(() => {
+    cierreVoluntarioRef.current = true
+    clearTimeout(timeoutConexionRef.current)
     processorRef.current?.disconnect()
     audioContextRef.current?.close()
     playbackContextRef.current?.close()
@@ -127,9 +169,10 @@ export function useVozLive() {
     wsRef.current?.close()
     setConectado(false)
     setItemsMostrados([])
+    setError(null)
   }, [])
 
-  return { conectado, iniciar, detener, itemsMostrados }
+  return { conectado, iniciar, detener, itemsMostrados, error }
 }
 
 function floatTo16BitPCM(input) {

@@ -1,16 +1,27 @@
 import { Hono } from 'hono'
 import type { Bindings } from '../types'
 import { allTools, executeTool } from '../tools'
+import { verifyAuthToken } from '../middleware/auth'
 
 const voz = new Hono<{ Bindings: Bindings }>()
 
-// Endpoint de prueba: valida que el WebSocket del cliente conecta
-// y que el Worker puede abrir un WebSocket saliente hacia Gemini Live.
-// Todavía es solo plumbing, sin procesar audio real ni tools.
 voz.get('/', async (c) => {
   const upgradeHeader = c.req.header('Upgrade')
   if (upgradeHeader !== 'websocket') {
     return c.text('Esta ruta espera una conexión WebSocket', 426)
+  }
+
+  // El WebSocket del navegador no puede mandar headers custom en el
+  // handshake, así que el token viaja por query string en vez de
+  // Authorization (a diferencia de requireAuth en las rutas HTTP normales).
+  const token = c.req.query('token')
+  if (!token) {
+    return c.text('No autorizado', 401)
+  }
+  try {
+    await verifyAuthToken(token, c.env)
+  } catch {
+    return c.text('No autorizado', 401)
   }
 
   const pair = new WebSocketPair()
@@ -55,7 +66,9 @@ IMPORTANTE: Nico nunca sabe ni va a decirte IDs internos (de trabajo, cliente o 
 3. Solo si hay ambigüedad real (por ejemplo, dos trabajos del mismo cliente) preguntale a Nico cuál de los dos es, describiéndoselo por cliente/fecha/descripción — nunca por ID.
 4. Nunca le pidas a Nico que te diga un número de ID directamente.
 
-Cuando Nico te pida ver, pasarte o mostrar un trabajo o presupuesto específico (frases como "pasamelo", "mostrámelo", "quiero verlo", "ese"), aunque ya tengas esa información de una consulta anterior en la misma conversación, SIEMPRE volvé a llamar a ver_trabajo para ese trabajo puntual antes de responder. Eso hace que aparezca visualmente en la pantalla, no solo que lo digas por voz.`,
+Cuando Nico te pida ver, pasarte o mostrar un trabajo o presupuesto específico (frases como "pasamelo", "mostrámelo", "quiero verlo", "ese"), aunque ya tengas esa información de una consulta anterior en la misma conversación, SIEMPRE volvé a llamar a ver_trabajo para ese trabajo puntual antes de responder. Eso hace que aparezca visualmente en la pantalla, no solo que lo digas por voz.
+
+Si Nico te pide varias cosas encadenadas en un solo pedido (ej: "creame un cliente nuevo, Fulano, con un trabajo de cielorraso de 20 metros para el martes a las 10"), no vayas llamando cliente → trabajo → presupuesto → agenda una por una: usá crear_flujo_completo, que hace todo junto en una sola operación atómica (si algo falla, no queda nada guardado a medias). Reservá los tools sueltos (crear_cliente, crear_trabajo, calcular_presupuesto, guardar_presupuesto, crear_agenda_item, etc.) para cuando el pedido sea de un solo paso, por ejemplo "agregame un cliente nuevo" y nada más.`,
     }],
   }
 
