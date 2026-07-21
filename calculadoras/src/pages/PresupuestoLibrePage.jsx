@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from 'react-router-dom'
 import { formatNumber } from "../data/materials";
+import { getTrabajos, createTrabajo, createPresupuesto, getClientes, createCliente } from '../lib/api'
 
 const DATOS_PAGO = {
   alias: "nzsoluciones.mp",
@@ -7,11 +9,28 @@ const DATOS_PAGO = {
 };
 
 export default function PresupuestoLibrePage() {
+  const navigate = useNavigate()
   const [cliente, setCliente] = useState("");
+  const [clienteId, setClienteId] = useState(null);
+  const [showClienteModal, setShowClienteModal] = useState(false);
+  const [clientesList, setClientesList] = useState([]);
+  const [modoCliente, setModoCliente] = useState('existente');
+  const [clienteSeleccionadoTmp, setClienteSeleccionadoTmp] = useState('');
+  const [nombreClienteNuevo, setNombreClienteNuevo] = useState('');
+  const [telefonoClienteNuevo, setTelefonoClienteNuevo] = useState('');
+  const [creandoCliente, setCreandoCliente] = useState(false);
+  const [clienteError, setClienteError] = useState('');
   const [descripcion, setDescripcion] = useState("");
   const [items, setItems] = useState([{ desc: "", precio: "" }]);
   const [materiales, setMateriales] = useState([""]);
   const [datosPago, setDatosPago] = useState(DATOS_PAGO);
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [trabajosList, setTrabajosList] = useState([])
+  const [modo, setModo] = useState('existente')
+  const [trabajoSeleccionado, setTrabajoSeleccionado] = useState('')
+  const [clienteSeleccionado, setClienteSeleccionado] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   const total = items.reduce((acc, i) => acc + (parseFloat(i.precio) || 0), 0);
 
@@ -43,13 +62,124 @@ export default function PresupuestoLibrePage() {
     setMateriales(materiales.filter((_, i) => i !== index));
   }
 
+  function openClienteModal() {
+    setClienteError('')
+    setModoCliente('existente')
+    setClienteSeleccionadoTmp('')
+    setNombreClienteNuevo('')
+    setTelefonoClienteNuevo('')
+    setShowClienteModal(true)
+  }
+
+  async function confirmarCliente() {
+    setClienteError('')
+
+    if (modoCliente === 'existente') {
+      if (!clienteSeleccionadoTmp) {
+        setClienteError('Elegí un cliente')
+        return
+      }
+      const elegido = clientesList.find((c) => String(c.id) === String(clienteSeleccionadoTmp))
+      setClienteId(elegido.id)
+      setCliente(elegido.nombre)
+      setShowClienteModal(false)
+      return
+    }
+
+    if (!nombreClienteNuevo.trim()) {
+      setClienteError('Ingresá el nombre del cliente')
+      return
+    }
+
+    setCreandoCliente(true)
+    try {
+      const res = await createCliente({ nombre: nombreClienteNuevo, telefono: telefonoClienteNuevo || null })
+      setClienteId(res.cliente.id)
+      setCliente(res.cliente.nombre)
+      setClientesList((prev) => [...prev, res.cliente])
+      setShowClienteModal(false)
+    } catch (err) {
+      setClienteError(err.message)
+    } finally {
+      setCreandoCliente(false)
+    }
+  }
+
+  useEffect(() => {
+    getClientes().then((res) => setClientesList(res.clientes)).catch(() => {})
+  }, [])
+
+  async function openSaveModal() {
+    setSaveError('')
+    setShowSaveModal(true)
+    try {
+      const [trabajosRes, clientesRes] = await Promise.all([getTrabajos(), getClientes()])
+      setTrabajosList(trabajosRes.trabajos.filter((t) => t.estado === 'borrador' || t.estado === 'pendiente'))
+      setClientesList(clientesRes.clientes)
+    } catch (err) {
+      setSaveError(err.message)
+    }
+  }
+
+  async function handleGuardarPresupuesto() {
+    setSaving(true)
+    setSaveError('')
+    try {
+      let trabajoId = trabajoSeleccionado
+
+      if (modo === 'nuevo') {
+        if (!clienteId) {
+          setSaveError('Primero seleccioná un cliente arriba')
+          setSaving(false)
+          return
+        }
+
+        const nuevo = await createTrabajo({ cliente_id: clienteId })
+        trabajoId = nuevo.trabajo.id
+      }
+
+      if (!trabajoId) {
+        setSaveError('Elegí un trabajo o creá uno nuevo')
+        setSaving(false)
+        return
+      }
+
+      await createPresupuesto({
+        trabajo_id: trabajoId,
+        category: 'libre',
+        m2: 0,
+        waste: 0,
+        materials: {
+          cliente,
+          descripcion,
+          items: items.filter((i) => i.desc || i.precio),
+          materiales: materiales.filter((m) => m),
+          datosPago,
+        },
+        total,
+      })
+
+      navigate(`/trabajos/${trabajoId}`)
+    } catch (err) {
+      setSaveError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="max-w-[800px] mx-auto px-4 pb-20 pt-24">
-      {/* Acción imprimir */}
-      <div className="flex justify-end mb-6 no-print">
+      {/* Acciones */}
+      <div className="flex justify-end gap-3 mb-6 no-print">
+        <button
+          onClick={openSaveModal}
+          className="flex items-center gap-2 bg-nz-green text-nz-bg font-semibold text-sm px-5 py-2.5 rounded-xl border-none cursor-pointer hover:bg-[#23d660] transition-all"
+        >
+          💾 Guardar presupuesto
+        </button>
         <button
           onClick={() => window.print()}
-          className="flex items-center gap-2 bg-nz-green text-nz-bg font-semibold text-sm px-5 py-2.5 rounded-xl border-none cursor-pointer hover:bg-[#23d660] transition-all"
+          className="flex items-center gap-2 bg-nz-surface2 text-nz-text font-semibold text-sm px-5 py-2.5 rounded-xl border border-nz-border cursor-pointer hover:border-nz-green transition-all"
         >
           🖨️ Exportar PDF
         </button>
@@ -63,13 +193,24 @@ export default function PresupuestoLibrePage() {
             <span className="w-2 h-2 bg-nz-green rounded-full" />
             Datos del cliente
           </div>
-          <input
-            type="text"
-            placeholder="Nombre o dirección del cliente"
-            value={cliente}
-            onChange={(e) => setCliente(e.target.value)}
-            className="w-full bg-nz-surface2 border border-nz-border rounded-lg text-nz-text text-sm px-4 py-2.5 outline-none focus:border-nz-green"
-          />
+          {clienteId ? (
+            <div className="flex items-center justify-between bg-nz-surface2 border border-nz-border rounded-lg px-4 py-2.5">
+              <span className="text-sm font-medium">{cliente}</span>
+              <button
+                onClick={openClienteModal}
+                className="text-nz-green text-xs font-medium bg-transparent border-none cursor-pointer hover:underline"
+              >
+                Cambiar
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={openClienteModal}
+              className="w-full bg-nz-surface2 border border-dashed border-nz-border rounded-lg text-nz-text2 text-sm px-4 py-2.5 cursor-pointer hover:border-nz-green hover:text-nz-green transition-all"
+            >
+              + Seleccionar cliente
+            </button>
+          )}
         </div>
 
         {/* Items */}
@@ -323,6 +464,157 @@ export default function PresupuestoLibrePage() {
           </div>
         </div>
       </div>
+
+      {showClienteModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4 no-print" onClick={() => setShowClienteModal(false)}>
+          <div
+            className="bg-nz-surface border border-nz-border rounded-xl p-6 w-full max-w-[420px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-4">Seleccionar cliente</h3>
+
+            {clienteError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg p-3 mb-4 text-sm">
+                {clienteError}
+              </div>
+            )}
+
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setModoCliente('existente')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
+                  modoCliente === 'existente' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
+                }`}
+              >
+                Cliente existente
+              </button>
+              <button
+                onClick={() => setModoCliente('nuevo')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
+                  modoCliente === 'nuevo' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
+                }`}
+              >
+                Cliente nuevo
+              </button>
+            </div>
+
+            {modoCliente === 'existente' ? (
+              <select
+                value={clienteSeleccionadoTmp}
+                onChange={(e) => setClienteSeleccionadoTmp(e.target.value)}
+                className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green mb-4"
+              >
+                <option value="">Elegí un cliente...</option>
+                {clientesList.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            ) : (
+              <>
+                <input
+                  placeholder="Nombre del cliente"
+                  value={nombreClienteNuevo}
+                  onChange={(e) => setNombreClienteNuevo(e.target.value)}
+                  className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green mb-3"
+                />
+                <input
+                  placeholder="Teléfono (opcional)"
+                  value={telefonoClienteNuevo}
+                  onChange={(e) => setTelefonoClienteNuevo(e.target.value)}
+                  className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green mb-4"
+                />
+              </>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClienteModal(false)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-nz-surface2 text-nz-text2 border border-nz-border"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarCliente}
+                disabled={creandoCliente}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-nz-green text-black disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {creandoCliente && <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
+                {creandoCliente ? 'Creando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4 no-print" onClick={() => setShowSaveModal(false)}>
+          <div
+            className="bg-nz-surface border border-nz-border rounded-xl p-6 w-full max-w-[420px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-4">Guardar presupuesto</h3>
+
+            {saveError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg p-3 mb-4 text-sm">
+                {saveError}
+              </div>
+            )}
+
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setModo('existente')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
+                  modo === 'existente' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
+                }`}
+              >
+                Trabajo existente
+              </button>
+              <button
+                onClick={() => setModo('nuevo')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
+                  modo === 'nuevo' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
+                }`}
+              >
+                Trabajo nuevo
+              </button>
+            </div>
+
+            {modo === 'existente' ? (
+              <select
+                value={trabajoSeleccionado}
+                onChange={(e) => setTrabajoSeleccionado(e.target.value)}
+                className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green mb-4"
+              >
+                <option value="">Elegí un trabajo...</option>
+                {trabajosList.map((t) => (
+                  <option key={t.id} value={t.id}>{t.cliente_nombre} ({t.estado})</option>
+                ))}
+              </select>
+            ) : (
+              <div className="mb-4 text-sm text-nz-text2">
+                Se va a crear un trabajo nuevo para <span className="text-nz-text font-medium">{cliente}</span>.
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-nz-surface2 text-nz-text2 border border-nz-border"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGuardarPresupuesto}
+                disabled={saving}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-nz-green text-black disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {saving && <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
+                {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
