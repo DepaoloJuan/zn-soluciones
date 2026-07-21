@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { calcQuantity, formatQty, formatNumber, buildSummaryText, recommendMasilla, recommendCinta } from '../data/materials'
+import { getTrabajos, createTrabajo, createPresupuesto, getClientes, createCliente } from '../lib/api'
 
 const WASTE_OPTIONS = [
   { value: 0, label: 'Sin desperdicio' },
@@ -12,10 +14,21 @@ const WASTE_OPTIONS = [
 const QUICK_M2 = [10, 20, 30, 50, 100]
 
 export default function Calculator({ type, title, subtitle, materials, storageKey }) {
+  const navigate = useNavigate()
   const [m2, setM2] = useState('')
   const [waste, setWaste] = useState(0.10)
   const [prices, setPrices] = useState({})
   const [copied, setCopied] = useState(false)
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [trabajosList, setTrabajosList] = useState([])
+  const [modo, setModo] = useState('existente') // 'existente' o 'nuevo'
+  const [trabajoSeleccionado, setTrabajoSeleccionado] = useState('')
+  const [clientesList, setClientesList] = useState([])
+  const [modoCliente, setModoCliente] = useState('existente')
+  const [clienteSeleccionado, setClienteSeleccionado] = useState('')
+  const [nombreClienteNuevo, setNombreClienteNuevo] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   // Load saved prices
   useEffect(() => {
@@ -92,6 +105,74 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
   function getWhatsAppLink() {
     const text = buildSummaryText(type, m2Num, waste, materials, prices)
     return `https://wa.me/?text=${encodeURIComponent(text)}`
+  }
+
+  async function openSaveModal() {
+    setSaveError('')
+    setShowSaveModal(true)
+    try {
+      const [trabajosRes, clientesRes] = await Promise.all([getTrabajos(), getClientes()])
+      setTrabajosList(trabajosRes.trabajos.filter((t) => t.estado === 'borrador' || t.estado === 'pendiente'))
+      setClientesList(clientesRes.clientes)
+    } catch (err) {
+      setSaveError(err.message)
+    }
+  }
+
+  async function handleGuardarPresupuesto() {
+    setSaving(true)
+    setSaveError('')
+    try {
+      let trabajoId = trabajoSeleccionado
+
+      if (modo === 'nuevo') {
+        let clienteId = clienteSeleccionado
+
+        if (modoCliente === 'nuevo') {
+          if (!nombreClienteNuevo.trim()) {
+            setSaveError('Ingresá el nombre del cliente')
+            setSaving(false)
+            return
+          }
+          const nuevoCliente = await createCliente({ nombre: nombreClienteNuevo })
+          clienteId = nuevoCliente.cliente.id
+        }
+
+        if (!clienteId) {
+          setSaveError('Elegí un cliente o creá uno nuevo')
+          setSaving(false)
+          return
+        }
+
+        const nuevo = await createTrabajo({ cliente_id: clienteId })
+        trabajoId = nuevo.trabajo.id
+      }
+
+      if (!trabajoId) {
+        setSaveError('Elegí un trabajo o creá uno nuevo')
+        setSaving(false)
+        return
+      }
+
+      await createPresupuesto({
+        trabajo_id: trabajoId,
+        category: type,
+        m2: m2Num,
+        waste,
+        materials: {
+          rows: results.rows,
+          masillaRecomendacion: results.masillaRecomendacion,
+          cintaRecomendacion: results.cintaRecomendacion,
+        },
+        total: results.total,
+      })
+
+      navigate(`/trabajos/${trabajoId}`)
+    } catch (err) {
+      setSaveError(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -275,6 +356,14 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
       {/* Actions */}
       <div className="flex gap-3 mt-5 flex-wrap no-print">
         <button
+          onClick={openSaveModal}
+          disabled={!results}
+          className="flex-1 min-w-[140px] px-5 py-3.5 rounded-xl bg-nz-green text-nz-bg font-semibold text-sm border-none cursor-pointer transition-all hover:bg-[#23d660] disabled:opacity-40 disabled:cursor-default flex items-center justify-center gap-2"
+        >
+          💾 Guardar presupuesto
+        </button>
+
+        <button
           onClick={copyToClipboard}
           disabled={!results}
           className="flex-1 min-w-[140px] px-5 py-3.5 rounded-xl bg-nz-green text-nz-bg font-semibold text-sm border-none cursor-pointer transition-all hover:bg-[#23d660] disabled:opacity-40 disabled:cursor-default flex items-center justify-center gap-2"
@@ -307,6 +396,112 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
           ↺ Limpiar
         </button>
       </div>
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => setShowSaveModal(false)}>
+          <div
+            className="bg-nz-surface border border-nz-border rounded-xl p-6 w-full max-w-[420px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold mb-4">Guardar presupuesto</h3>
+
+            {saveError && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg p-3 mb-4 text-sm">
+                {saveError}
+              </div>
+            )}
+
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setModo('existente')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
+                  modo === 'existente' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
+                }`}
+              >
+                Trabajo existente
+              </button>
+              <button
+                onClick={() => setModo('nuevo')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
+                  modo === 'nuevo' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
+                }`}
+              >
+                Trabajo nuevo
+              </button>
+            </div>
+
+            {modo === 'existente' ? (
+              <select
+                value={trabajoSeleccionado}
+                onChange={(e) => setTrabajoSeleccionado(e.target.value)}
+                className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green mb-4"
+              >
+                <option value="">Elegí un trabajo...</option>
+                {trabajosList.map((t) => (
+                  <option key={t.id} value={t.id}>{t.cliente_nombre} ({t.estado})</option>
+                ))}
+              </select>
+            ) : (
+              <div className="mb-4">
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setModoCliente('existente')}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${
+                      modoCliente === 'existente' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
+                    }`}
+                  >
+                    Cliente existente
+                  </button>
+                  <button
+                    onClick={() => setModoCliente('nuevo')}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${
+                      modoCliente === 'nuevo' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
+                    }`}
+                  >
+                    Cliente nuevo
+                  </button>
+                </div>
+
+                {modoCliente === 'existente' ? (
+                  <select
+                    value={clienteSeleccionado}
+                    onChange={(e) => setClienteSeleccionado(e.target.value)}
+                    className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
+                  >
+                    <option value="">Elegí un cliente...</option>
+                    {clientesList.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    placeholder="Nombre del cliente"
+                    value={nombreClienteNuevo}
+                    onChange={(e) => setNombreClienteNuevo(e.target.value)}
+                    className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
+                  />
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-nz-surface2 text-nz-text2 border border-nz-border"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGuardarPresupuesto}
+                disabled={saving}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-nz-green text-black disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {saving && <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
+                {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { formatQty, formatNumber } from "../data/materials";
+import { getSetting } from '../lib/api'
 const formatCantidad = (r, budget) => {
   if (r.id === 'masilla' && budget.masillaRecomendacion?.length > 0) {
     return budget.masillaRecomendacion.map(b => `${b.cantidad} × ${b.label} (${b.kg} kg)`).join(' + ')
@@ -12,12 +13,17 @@ const formatCantidad = (r, budget) => {
 
 export default function PresupuestoPage() {
   const [budget, setBudget] = useState(null);
+  const [condiciones, setCondiciones] = useState('')
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem("nz_last_budget");
       if (saved) setBudget(JSON.parse(saved));
     } catch {}
+
+    getSetting('condiciones_cielorraso')
+      .then((res) => setCondiciones(res.value))
+      .catch(() => setCondiciones(''))
   }, []);
 
   if (!budget) {
@@ -135,6 +141,20 @@ export default function PresupuestoPage() {
             ${formatNumber(budget.total)}
           </div>
         </div>
+
+        {/* Condiciones */}
+        {condiciones && (
+          <div className="mx-8 mb-6 bg-gray-50 border border-gray-200 rounded-xl px-6 py-4 text-xs text-gray-600 leading-relaxed">
+            <div className="font-semibold text-gray-700 mb-1.5 uppercase tracking-wider text-[11px]">
+              Condiciones
+            </div>
+            <ul className="list-disc list-inside space-y-1">
+              {condiciones.split('\n').map((linea, i) => (
+                <li key={i}>{linea}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="px-8 py-4 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 text-center">
