@@ -15,6 +15,7 @@ import preciosRoutes from './routes/precios'
 import agendaRoutes from './routes/agenda'
 import pushRoutes from './routes/push'
 import vozRoutes from './routes/voz'
+import flujoCompletoRoutes from './routes/flujoCompleto'
 import { runScheduledChecks } from './scheduled'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -56,6 +57,8 @@ app.route('/api/agenda', agendaRoutes)
 app.route('/api/push', pushRoutes)
 
 app.route('/api/voz', vozRoutes)
+
+app.route('/api/flujo-completo', flujoCompletoRoutes)
 
 export default {
   fetch: app.fetch,

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { calcQuantity, formatQty, formatNumber, buildSummaryText, recommendMasilla, recommendCinta } from '../data/materials'
-import { getTrabajos, createTrabajo, createPresupuesto, getClientes, createCliente } from '../lib/api'
+import { updateMaterial } from '../lib/api'
+import GuardarPresupuestoModal from './GuardarPresupuestoModal'
 
 const WASTE_OPTIONS = [
   { value: 0, label: 'Sin desperdicio' },
@@ -13,35 +14,28 @@ const WASTE_OPTIONS = [
 
 const QUICK_M2 = [10, 20, 30, 50, 100]
 
-export default function Calculator({ type, title, subtitle, materials, storageKey }) {
+export default function Calculator({ type, title, subtitle, materials }) {
   const navigate = useNavigate()
   const [m2, setM2] = useState('')
   const [waste, setWaste] = useState(0.10)
-  const [prices, setPrices] = useState({})
+  // Precio por defecto: el del catálogo (mat.price, viene del backend). Editable
+  // acá en memoria para este cálculo puntual, sin persistir solo — para que quede
+  // como default hay que usar el botón "guardar como precio de catálogo".
+  const [prices, setPrices] = useState(() =>
+    Object.fromEntries(materials.map((m) => [m.id, m.price]))
+  )
+  // Último precio de catálogo confirmado por material: arranca igual que `prices`
+  // (que viene del prop `mat.price`), pero solo se actualiza cuando
+  // guardarComoPrecioCatalogo persiste con éxito. Sirve para saber si el botón
+  // "💾 Catálogo" debe mostrarse, sin depender del prop original (que la página
+  // padre no vuelve a fetchear tras guardar).
+  const [catalogPrices, setCatalogPrices] = useState(() =>
+    Object.fromEntries(materials.map((m) => [m.id, m.price]))
+  )
   const [copied, setCopied] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
-  const [trabajosList, setTrabajosList] = useState([])
-  const [modo, setModo] = useState('existente') // 'existente' o 'nuevo'
-  const [trabajoSeleccionado, setTrabajoSeleccionado] = useState('')
-  const [clientesList, setClientesList] = useState([])
-  const [modoCliente, setModoCliente] = useState('existente')
-  const [clienteSeleccionado, setClienteSeleccionado] = useState('')
-  const [nombreClienteNuevo, setNombreClienteNuevo] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState('')
-
-  // Load saved prices
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey)
-      if (saved) setPrices(JSON.parse(saved))
-    } catch {}
-  }, [storageKey])
-
-  // Save prices on change
-  useEffect(() => {
-    try { localStorage.setItem(storageKey, JSON.stringify(prices)) } catch {}
-  }, [prices, storageKey])
+  const [savingCatalogId, setSavingCatalogId] = useState(null)
+  const [catalogError, setCatalogError] = useState('')
 
   const m2Num = parseFloat(m2) || 0
   const effectiveM2 = m2Num * (1 + waste)
@@ -87,10 +81,23 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
     setPrices((prev) => ({ ...prev, [id]: parseFloat(value) || 0 }))
   }
 
+  async function guardarComoPrecioCatalogo(id) {
+    setSavingCatalogId(id)
+    setCatalogError('')
+    try {
+      await updateMaterial(type, id, { price: prices[id] || 0 })
+      setCatalogPrices((prev) => ({ ...prev, [id]: prices[id] || 0 }))
+    } catch (err) {
+      setCatalogError(err.message)
+    } finally {
+      setSavingCatalogId(null)
+    }
+  }
+
   function reset() {
     setM2('')
     setWaste(0.10)
-    setPrices({})
+    setPrices(Object.fromEntries(materials.map((m) => [m.id, m.price])))
   }
 
   function copyToClipboard() {
@@ -105,74 +112,6 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
   function getWhatsAppLink() {
     const text = buildSummaryText(type, m2Num, waste, materials, prices)
     return `https://wa.me/?text=${encodeURIComponent(text)}`
-  }
-
-  async function openSaveModal() {
-    setSaveError('')
-    setShowSaveModal(true)
-    try {
-      const [trabajosRes, clientesRes] = await Promise.all([getTrabajos(), getClientes()])
-      setTrabajosList(trabajosRes.trabajos.filter((t) => t.estado === 'borrador' || t.estado === 'pendiente'))
-      setClientesList(clientesRes.clientes)
-    } catch (err) {
-      setSaveError(err.message)
-    }
-  }
-
-  async function handleGuardarPresupuesto() {
-    setSaving(true)
-    setSaveError('')
-    try {
-      let trabajoId = trabajoSeleccionado
-
-      if (modo === 'nuevo') {
-        let clienteId = clienteSeleccionado
-
-        if (modoCliente === 'nuevo') {
-          if (!nombreClienteNuevo.trim()) {
-            setSaveError('Ingresá el nombre del cliente')
-            setSaving(false)
-            return
-          }
-          const nuevoCliente = await createCliente({ nombre: nombreClienteNuevo })
-          clienteId = nuevoCliente.cliente.id
-        }
-
-        if (!clienteId) {
-          setSaveError('Elegí un cliente o creá uno nuevo')
-          setSaving(false)
-          return
-        }
-
-        const nuevo = await createTrabajo({ cliente_id: clienteId })
-        trabajoId = nuevo.trabajo.id
-      }
-
-      if (!trabajoId) {
-        setSaveError('Elegí un trabajo o creá uno nuevo')
-        setSaving(false)
-        return
-      }
-
-      await createPresupuesto({
-        trabajo_id: trabajoId,
-        category: type,
-        m2: m2Num,
-        waste,
-        materials: {
-          rows: results.rows,
-          masillaRecomendacion: results.masillaRecomendacion,
-          cintaRecomendacion: results.cintaRecomendacion,
-        },
-        total: results.total,
-      })
-
-      navigate(`/trabajos/${trabajoId}`)
-    } catch (err) {
-      setSaveError(err.message)
-    } finally {
-      setSaving(false)
-    }
   }
 
   return (
@@ -242,16 +181,21 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
           Precios unitarios
         </div>
 
+        {catalogError && (
+          <div className="bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg p-3 mb-3 text-sm">{catalogError}</div>
+        )}
+
         {/* Header */}
-        <div className="grid grid-cols-[1fr_auto_auto] gap-0 text-sm">
+        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-0 text-sm">
           <div className="font-mono text-[10px] tracking-[2px] uppercase text-nz-text2 px-3 py-2 border-b border-nz-border">Material</div>
           <div className="font-mono text-[10px] tracking-[2px] uppercase text-nz-text2 px-3 py-2 border-b border-nz-border">Precio</div>
           <div className="font-mono text-[10px] tracking-[2px] uppercase text-nz-text2 px-3 py-2 border-b border-nz-border hidden sm:block">Unidad</div>
+          <div className="px-3 py-2 border-b border-nz-border" />
         </div>
 
         {/* Rows */}
         {materials.map((mat) => (
-          <div key={mat.id} className="grid grid-cols-[1fr_auto_auto] gap-0 text-sm">
+          <div key={mat.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-0 text-sm items-center">
             <div className="flex items-center gap-2 px-3 py-2.5 border-b border-nz-border/50 font-medium">
               <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: mat.color }} />
               {mat.name}
@@ -268,6 +212,19 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
             </div>
             <div className="items-center px-3 py-2.5 border-b border-nz-border/50 hidden sm:flex">
               <span className="text-[11px] text-nz-text2 ml-1">/ {mat.unit}</span>
+            </div>
+            <div className="flex items-center px-3 py-2.5 border-b border-nz-border/50">
+              {(prices[mat.id] || 0) !== (catalogPrices[mat.id] || 0) && (
+                <button
+                  type="button"
+                  onClick={() => guardarComoPrecioCatalogo(mat.id)}
+                  disabled={savingCatalogId === mat.id}
+                  title="Guardar este precio como default del catálogo para futuros cálculos"
+                  className="text-[11px] bg-nz-surface2 border border-nz-border rounded-lg px-2 py-1.5 text-nz-text2 disabled:opacity-50 hover:border-nz-green hover:text-nz-green transition-all whitespace-nowrap"
+                >
+                  {savingCatalogId === mat.id ? '...' : '💾 Catálogo'}
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -356,12 +313,21 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
       {/* Actions */}
       <div className="flex gap-3 mt-5 flex-wrap no-print">
         <button
-          onClick={openSaveModal}
+          onClick={() => setShowSaveModal(true)}
           disabled={!results}
           className="flex-1 min-w-[140px] px-5 py-3.5 rounded-xl bg-nz-green text-nz-bg font-semibold text-sm border-none cursor-pointer transition-all hover:bg-[#23d660] disabled:opacity-40 disabled:cursor-default flex items-center justify-center gap-2"
         >
           💾 Guardar presupuesto
         </button>
+
+        <Link
+          to="/presupuesto"
+          className={`flex-1 min-w-[140px] px-5 py-3.5 rounded-xl bg-nz-surface2 text-nz-text font-semibold text-sm border border-nz-border no-underline transition-all flex items-center justify-center gap-2 ${
+            !results ? 'opacity-40 pointer-events-none' : 'hover:border-nz-green'
+          }`}
+        >
+          📄 Vista previa para imprimir
+        </Link>
 
         <button
           onClick={copyToClipboard}
@@ -396,112 +362,22 @@ export default function Calculator({ type, title, subtitle, materials, storageKe
           ↺ Limpiar
         </button>
       </div>
-      {showSaveModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => setShowSaveModal(false)}>
-          <div
-            className="bg-nz-surface border border-nz-border rounded-xl p-6 w-full max-w-[420px]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold mb-4">Guardar presupuesto</h3>
-
-            {saveError && (
-              <div className="bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg p-3 mb-4 text-sm">
-                {saveError}
-              </div>
-            )}
-
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setModo('existente')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
-                  modo === 'existente' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
-                }`}
-              >
-                Trabajo existente
-              </button>
-              <button
-                onClick={() => setModo('nuevo')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
-                  modo === 'nuevo' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
-                }`}
-              >
-                Trabajo nuevo
-              </button>
-            </div>
-
-            {modo === 'existente' ? (
-              <select
-                value={trabajoSeleccionado}
-                onChange={(e) => setTrabajoSeleccionado(e.target.value)}
-                className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green mb-4"
-              >
-                <option value="">Elegí un trabajo...</option>
-                {trabajosList.map((t) => (
-                  <option key={t.id} value={t.id}>{t.cliente_nombre} ({t.estado})</option>
-                ))}
-              </select>
-            ) : (
-              <div className="mb-4">
-                <div className="flex gap-2 mb-3">
-                  <button
-                    onClick={() => setModoCliente('existente')}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${
-                      modoCliente === 'existente' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
-                    }`}
-                  >
-                    Cliente existente
-                  </button>
-                  <button
-                    onClick={() => setModoCliente('nuevo')}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${
-                      modoCliente === 'nuevo' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
-                    }`}
-                  >
-                    Cliente nuevo
-                  </button>
-                </div>
-
-                {modoCliente === 'existente' ? (
-                  <select
-                    value={clienteSeleccionado}
-                    onChange={(e) => setClienteSeleccionado(e.target.value)}
-                    className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
-                  >
-                    <option value="">Elegí un cliente...</option>
-                    {clientesList.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nombre}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    placeholder="Nombre del cliente"
-                    value={nombreClienteNuevo}
-                    onChange={(e) => setNombreClienteNuevo(e.target.value)}
-                    className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green"
-                  />
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowSaveModal(false)}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-nz-surface2 text-nz-text2 border border-nz-border"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleGuardarPresupuesto}
-                disabled={saving}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-nz-green text-black disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {saving && <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
-                {saving ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <GuardarPresupuestoModal
+        open={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        buildPresupuesto={() => ({
+          category: type,
+          m2: m2Num,
+          waste,
+          materials: {
+            rows: results.rows,
+            masillaRecomendacion: results.masillaRecomendacion,
+            cintaRecomendacion: results.cintaRecomendacion,
+          },
+          total: results.total,
+        })}
+        onSaved={(trabajoId) => navigate(`/trabajos/${trabajoId}`)}
+      />
     </div>
   )
 }

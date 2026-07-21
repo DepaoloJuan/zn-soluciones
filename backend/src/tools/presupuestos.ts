@@ -48,28 +48,42 @@ export const presupuestosTools = [
   },
 ]
 
+// Lógica de cálculo compartida: la usan tanto el tool suelto `calcular_presupuesto`
+// como `crear_flujo_completo` (tools/flujoCompleto.ts), para no duplicarla.
+export async function calcularPresupuestoCore(databaseUrl: string, category: string, m2: number, waste = 0.10) {
+  const materials = await getMaterials(databaseUrl, category)
+
+  if (materials.length === 0) {
+    return { category, m2, waste, materials: [] as any[], total: 0 }
+  }
+
+  const effectiveM2 = m2 * (1 + waste)
+  const result = materials.map((mat) => {
+    const rawQty = effectiveM2 * mat.perM2
+    const qty = calcQuantity(rawQty, mat.round)
+    let recommendation = null
+    if (mat.id === 'masilla') recommendation = recommendMasilla(qty)
+    if (mat.id === 'cinta') recommendation = recommendCinta(qty)
+    return { ...mat, qty, recommendation }
+  })
+
+  const total = result.reduce((acc, m) => acc + m.qty * (m.price || 0), 0)
+
+  return { category, m2, waste, materials: result, total }
+}
+
 export async function executePresupuestoTool(name: string, input: any, databaseUrl: string) {
   const sql = neon(databaseUrl)
 
   if (name === 'calcular_presupuesto') {
     const { category, m2, waste = 0.10 } = input
-    const materials = await getMaterials(databaseUrl, category)
+    const { materials, total } = await calcularPresupuestoCore(databaseUrl, category, m2, waste)
 
     if (materials.length === 0) {
       return { error: `No hay materiales configurados para "${category}"` }
     }
 
-    const effectiveM2 = m2 * (1 + waste)
-    const result = materials.map((mat) => {
-      const rawQty = effectiveM2 * mat.perM2
-      const qty = calcQuantity(rawQty, mat.round)
-      let recommendation = null
-      if (mat.id === 'masilla') recommendation = recommendMasilla(qty)
-      if (mat.id === 'cinta') recommendation = recommendCinta(qty)
-      return { ...mat, qty, recommendation }
-    })
-
-    return { category, m2, waste, materials: result }
+    return { category, m2, waste, materials, total }
   }
 
   if (name === 'guardar_presupuesto') {

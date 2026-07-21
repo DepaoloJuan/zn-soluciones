@@ -6,6 +6,7 @@ import { gastosTools, executeGastoTool } from './gastos'
 import { dashboardTools, executeDashboardTool } from './dashboard'
 import { preciosTools, executePreciosTool } from './precios'
 import { agendaTools, executeAgendaTool } from './agenda'
+import { flujoCompletoTools, executeFlujoCompletoTool } from './flujoCompleto'
 
 export const allTools = [
   ...presupuestosTools,
@@ -16,6 +17,7 @@ export const allTools = [
   ...dashboardTools,
   ...preciosTools,
   ...agendaTools,
+  ...flujoCompletoTools,
 ]
 
 const toolGroups = [
@@ -27,6 +29,7 @@ const toolGroups = [
   { names: dashboardTools.map((t) => t.name), execute: executeDashboardTool },
   { names: preciosTools.map((t) => t.name), execute: executePreciosTool },
   { names: agendaTools.map((t) => t.name), execute: executeAgendaTool },
+  { names: flujoCompletoTools.map((t) => t.name), execute: executeFlujoCompletoTool },
 ]
 
 export async function executeTool(name: string, input: any, databaseUrl: string) {

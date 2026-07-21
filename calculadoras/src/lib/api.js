@@ -110,6 +110,13 @@ export function enviarPresupuesto(id) {
   })
 }
 
+export function crearFlujoCompleto(datos) {
+  return apiFetch('/api/flujo-completo', {
+    method: 'POST',
+    body: JSON.stringify(datos),
+  })
+}
+
 export function getClientes() {
   return apiFetch('/api/clientes')
 }

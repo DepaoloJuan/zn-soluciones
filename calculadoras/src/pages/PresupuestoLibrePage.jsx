@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from 'react-router-dom'
 import { formatNumber } from "../data/materials";
-import { getTrabajos, createTrabajo, createPresupuesto, getClientes, createCliente } from '../lib/api'
+import { getClientes, createCliente } from '../lib/api'
+import GuardarPresupuestoModal from '../components/GuardarPresupuestoModal'
 
 const DATOS_PAGO = {
   alias: "nzsoluciones.mp",
@@ -25,12 +26,6 @@ export default function PresupuestoLibrePage() {
   const [materiales, setMateriales] = useState([""]);
   const [datosPago, setDatosPago] = useState(DATOS_PAGO);
   const [showSaveModal, setShowSaveModal] = useState(false)
-  const [trabajosList, setTrabajosList] = useState([])
-  const [modo, setModo] = useState('existente')
-  const [trabajoSeleccionado, setTrabajoSeleccionado] = useState('')
-  const [clienteSeleccionado, setClienteSeleccionado] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState('')
 
   const total = items.reduce((acc, i) => acc + (parseFloat(i.precio) || 0), 0);
 
@@ -109,70 +104,12 @@ export default function PresupuestoLibrePage() {
     getClientes().then((res) => setClientesList(res.clientes)).catch(() => {})
   }, [])
 
-  async function openSaveModal() {
-    setSaveError('')
-    setShowSaveModal(true)
-    try {
-      const [trabajosRes, clientesRes] = await Promise.all([getTrabajos(), getClientes()])
-      setTrabajosList(trabajosRes.trabajos.filter((t) => t.estado === 'borrador' || t.estado === 'pendiente'))
-      setClientesList(clientesRes.clientes)
-    } catch (err) {
-      setSaveError(err.message)
-    }
-  }
-
-  async function handleGuardarPresupuesto() {
-    setSaving(true)
-    setSaveError('')
-    try {
-      let trabajoId = trabajoSeleccionado
-
-      if (modo === 'nuevo') {
-        if (!clienteId) {
-          setSaveError('Primero seleccioná un cliente arriba')
-          setSaving(false)
-          return
-        }
-
-        const nuevo = await createTrabajo({ cliente_id: clienteId })
-        trabajoId = nuevo.trabajo.id
-      }
-
-      if (!trabajoId) {
-        setSaveError('Elegí un trabajo o creá uno nuevo')
-        setSaving(false)
-        return
-      }
-
-      await createPresupuesto({
-        trabajo_id: trabajoId,
-        category: 'libre',
-        m2: 0,
-        waste: 0,
-        materials: {
-          cliente,
-          descripcion,
-          items: items.filter((i) => i.desc || i.precio),
-          materiales: materiales.filter((m) => m),
-          datosPago,
-        },
-        total,
-      })
-
-      navigate(`/trabajos/${trabajoId}`)
-    } catch (err) {
-      setSaveError(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
     <div className="max-w-[800px] mx-auto px-4 pb-20 pt-24">
       {/* Acciones */}
       <div className="flex justify-end gap-3 mb-6 no-print">
         <button
-          onClick={openSaveModal}
+          onClick={() => setShowSaveModal(true)}
           className="flex items-center gap-2 bg-nz-green text-nz-bg font-semibold text-sm px-5 py-2.5 rounded-xl border-none cursor-pointer hover:bg-[#23d660] transition-all"
         >
           💾 Guardar presupuesto
@@ -546,75 +483,26 @@ export default function PresupuestoLibrePage() {
         </div>
       )}
 
-      {showSaveModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4 no-print" onClick={() => setShowSaveModal(false)}>
-          <div
-            className="bg-nz-surface border border-nz-border rounded-xl p-6 w-full max-w-[420px]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold mb-4">Guardar presupuesto</h3>
-
-            {saveError && (
-              <div className="bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg p-3 mb-4 text-sm">
-                {saveError}
-              </div>
-            )}
-
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setModo('existente')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
-                  modo === 'existente' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
-                }`}
-              >
-                Trabajo existente
-              </button>
-              <button
-                onClick={() => setModo('nuevo')}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
-                  modo === 'nuevo' ? 'bg-nz-green text-black border-nz-green' : 'bg-nz-surface2 text-nz-text2 border-nz-border'
-                }`}
-              >
-                Trabajo nuevo
-              </button>
-            </div>
-
-            {modo === 'existente' ? (
-              <select
-                value={trabajoSeleccionado}
-                onChange={(e) => setTrabajoSeleccionado(e.target.value)}
-                className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green mb-4"
-              >
-                <option value="">Elegí un trabajo...</option>
-                {trabajosList.map((t) => (
-                  <option key={t.id} value={t.id}>{t.cliente_nombre} ({t.estado})</option>
-                ))}
-              </select>
-            ) : (
-              <div className="mb-4 text-sm text-nz-text2">
-                Se va a crear un trabajo nuevo para <span className="text-nz-text font-medium">{cliente}</span>.
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowSaveModal(false)}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-nz-surface2 text-nz-text2 border border-nz-border"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleGuardarPresupuesto}
-                disabled={saving}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-nz-green text-black disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {saving && <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
-                {saving ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <GuardarPresupuestoModal
+        open={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        preselectedClienteId={clienteId}
+        preselectedClienteNombre={cliente}
+        buildPresupuesto={() => ({
+          category: 'libre',
+          m2: 0,
+          waste: 0,
+          materials: {
+            cliente,
+            descripcion,
+            items: items.filter((i) => i.desc || i.precio),
+            materiales: materiales.filter((m) => m),
+            datosPago,
+          },
+          total,
+        })}
+        onSaved={(trabajoId) => navigate(`/trabajos/${trabajoId}`)}
+      />
     </div>
   );
 }

@@ -49,7 +49,9 @@ Para acciones destructivas (borrar algo), siempre confirmá antes de ejecutar.
 IMPORTANTE: Nico nunca sabe ni va a decirte IDs internos (de trabajo, cliente o presupuesto). Cuando necesites un ID:
 1. Si menciona un cliente por nombre, usá buscar_cliente.
 2. Si te habla de un trabajo sin ID, usá consultar_trabajos o ver_trabajo para encontrarlo por nombre/fecha/descripción.
-3. Nunca le pidas a Nico que te diga un número de ID directamente.`
+3. Nunca le pidas a Nico que te diga un número de ID directamente.
+
+Si Nico te pide varias cosas encadenadas en un solo pedido (ej: "creame un cliente nuevo, Fulano, con un trabajo de cielorraso de 20 metros para el martes a las 10"), no vayas llamando cliente → trabajo → presupuesto → agenda una por una: usá crear_flujo_completo, que hace todo junto en una sola operación atómica (si algo falla, no queda nada guardado a medias). Reservá los tools sueltos (crear_cliente, crear_trabajo, calcular_presupuesto, guardar_presupuesto, crear_agenda_item, etc.) para cuando el pedido sea de un solo paso, por ejemplo "agregame un cliente nuevo" y nada más.`
 
 const geminiTools = [
   {
@@ -62,7 +64,7 @@ const geminiTools = [
 ]
 
 async function llamarGemini(contents: any[], apiKey: string) {
-  const modelo = 'gemini-2.5-flash' // TODO: confirmar que sigue siendo el modelo recomendado vigente
+  const modelo = 'gemini-3.6-flash' // confirmado GA vigente (ai.google.dev/gemini-api/docs/latest-model) — gemini-2.5-flash fue retirado por Google
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`
 
   const res = await fetch(url, {
@@ -116,27 +118,32 @@ asistente.post('/', requireAuth, async (c) => {
   let respuestaFinal = ''
   let vueltas = 0
 
-  while (vueltas < 5) {
-    vueltas++
-    const data = await llamarGemini(contents, c.env.GEMINI_API_KEY)
-    const parts = data.candidates?.[0]?.content?.parts || []
+  try {
+    while (vueltas < 5) {
+      vueltas++
+      const data = await llamarGemini(contents, c.env.GEMINI_API_KEY)
+      const parts = data.candidates?.[0]?.content?.parts || []
 
-    const functionCalls = parts.filter((p: any) => p.functionCall)
+      const functionCalls = parts.filter((p: any) => p.functionCall)
 
-    if (functionCalls.length === 0) {
-      respuestaFinal = parts.map((p: any) => p.text || '').join('')
-      break
+      if (functionCalls.length === 0) {
+        respuestaFinal = parts.map((p: any) => p.text || '').join('')
+        break
+      }
+
+      contents.push({ role: 'model', parts })
+
+      const functionResponseParts = []
+      for (const fcPart of functionCalls) {
+        const { name, args } = fcPart.functionCall
+        const resultado = await executeTool(name, args, c.env.DATABASE_URL)
+        functionResponseParts.push({ functionResponse: { name, response: resultado } })
+      }
+      contents.push({ role: 'user', parts: functionResponseParts })
     }
-
-    contents.push({ role: 'model', parts })
-
-    const functionResponseParts = []
-    for (const fcPart of functionCalls) {
-      const { name, args } = fcPart.functionCall
-      const resultado = await executeTool(name, args, c.env.DATABASE_URL)
-      functionResponseParts.push({ functionResponse: { name, response: resultado } })
-    }
-    contents.push({ role: 'user', parts: functionResponseParts })
+  } catch (err: any) {
+    console.error('Error en el loop de function-calling del asistente:', err)
+    respuestaFinal = `Perdón, tuve un problema procesando tu pedido: ${err.message || err}. Probá de nuevo.`
   }
 
   if (!respuestaFinal) {
