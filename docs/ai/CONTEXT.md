@@ -51,6 +51,8 @@ backend/ (Cloudflare Worker, Hono)
 │   └── tools/               — Herramientas para Gemini (chat + voz comparten el mismo set)
 ```
 
+**`landing/`**: sitio estático de marketing (landing page pública de NZ Soluciones), separado de `calculadoras/` y `backend/`, deployado también vía Firebase Hosting.
+
 **Flujo auth:** El frontend usa BetterAuth/Neon para sign-in. Cada request al backend lleva `Authorization: Bearer <token>`. El middleware verifica el JWT contra el JWKS de Neon y luego chequea que el email esté en `allowed_emails`.
 
 **Flujo asistente (chat):** POST /api/asistente → guarda mensaje en BD → llama Gemini con historial + tools → loop de function calling (max 5 vueltas) → guarda respuesta → devuelve texto.
@@ -79,6 +81,8 @@ backend/ (Cloudflare Worker, Hono)
 
 | Método | Path | Descripción |
 |---|---|---|
+| GET | `/api/me` | Datos del usuario autenticado |
+| POST | `/api/presupuesto` | Cálculo de presupuesto sin guardar (preview, stateless) |
 | GET/PUT | `/api/settings/:key` | Configuración clave-valor (ej: precio mano de obra) |
 | GET/POST/PATCH/DELETE | `/api/materials/:category[/:id]` | Materiales por categoría |
 | GET/POST/PATCH | `/api/trabajos[/:id]` | CRUD trabajos |
@@ -223,6 +227,7 @@ _Inferida del código (no existe db_schema_dump.sql aún). Pedile a Juanma que g
 **En producción:**
 - Calculadoras de cielorraso y tabique
 - Gestión completa de trabajos, clientes, presupuestos y gastos
+- Presupuesto libre (PresupuestoLibrePage): items manuales, crea cliente/trabajo/presupuesto vía API
 - Dashboard con KPIs y gráfico de estados
 - Agenda con calendario mensual y notas por día
 - Asistente IA (chat texto + modo voz en tiempo real)
@@ -230,7 +235,6 @@ _Inferida del código (no existe db_schema_dump.sql aún). Pedile a Juanma que g
 - Push notifications con cron de recordatorios diarios
 
 **Pendiente / en progreso:**
-- Presupuesto libre (PresupuestoLibrePage): página existe, estado real a confirmar
 - `precios_items` / `/api/precios`: ruta y tools creadas, pero no hay UI dedicada aún (el asistente puede usarlo por voz)
 - El modelo de voz (`gemini-2.5-flash-native-audio-preview-09-2025`) tiene el string hardcodeado con comentario de que cambia seguido — verificar contra docs de Google antes de probar
 
