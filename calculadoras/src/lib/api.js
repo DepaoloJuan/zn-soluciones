@@ -178,18 +178,31 @@ export function deleteGasto(id) {
   })
 }
 
-export function getNotasMes(year, month) {
-  return apiFetch(`/api/notas/mes/${year}/${month}`)
+export function getAgendaMes(year, month) {
+  return apiFetch(`/api/agenda/mes/${year}/${month}`)
 }
 
-export function getNotaDia(fecha) {
-  return apiFetch(`/api/notas/${fecha}`)
+export function getAgendaDia(fecha) {
+  return apiFetch(`/api/agenda/${fecha}`)
 }
 
-export function guardarNotaDia(fecha, nota) {
-  return apiFetch(`/api/notas/${fecha}`, {
-    method: 'PUT',
-    body: JSON.stringify({ nota }),
+export function createAgendaItem(data) {
+  return apiFetch('/api/agenda', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export function updateAgendaItem(id, updates) {
+  return apiFetch(`/api/agenda/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  })
+}
+
+export function deleteAgendaItem(id) {
+  return apiFetch(`/api/agenda/${id}`, {
+    method: 'DELETE',
   })
 }
 

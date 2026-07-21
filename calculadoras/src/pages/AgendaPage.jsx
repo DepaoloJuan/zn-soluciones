@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { getTrabajos, getNotasMes, guardarNotaDia } from '../lib/api'
+import { getTrabajos, getAgendaMes, createAgendaItem, deleteAgendaItem } from '../lib/api'
+import { ESTADOS_TRABAJO_ABIERTOS } from '../lib/estados'
 
 const ESTADO_COLOR = {
   evaluado: 'bg-gray-500/20 text-gray-400',
@@ -35,13 +36,16 @@ function formatFecha(fechaStr) {
 export default function AgendaPage() {
   const [trabajos, setTrabajos] = useState([])
   const [sinFecha, setSinFecha] = useState([])
-  const [notas, setNotas] = useState({})
+  const [todosTrabajos, setTodosTrabajos] = useState([])
+  const [itemsPorDia, setItemsPorDia] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [cursor, setCursor] = useState(new Date())
   const [diaSeleccionado, setDiaSeleccionado] = useState(null)
-  const [notaTexto, setNotaTexto] = useState('')
-  const [guardandoNota, setGuardandoNota] = useState(false)
+  const [nuevoTexto, setNuevoTexto] = useState('')
+  const [nuevaHora, setNuevaHora] = useState('')
+  const [nuevoTrabajoId, setNuevoTrabajoId] = useState('')
+  const [guardandoItem, setGuardandoItem] = useState(false)
 
   const year = cursor.getFullYear()
   const month = cursor.getMonth() + 1
@@ -50,15 +54,19 @@ export default function AgendaPage() {
     setLoading(true)
     setError('')
     try {
-      const [trabajosRes, notasRes] = await Promise.all([getTrabajos(), getNotasMes(year, month)])
-      setTrabajos(trabajosRes.trabajos.filter((t) => t.fecha_trabajo && t.estado !== 'rechazado'))
-      setSinFecha(trabajosRes.trabajos.filter((t) => !t.fecha_trabajo && ['evaluado', 'enviado'].includes(t.estado)))
+      const [trabajosRes, agendaRes] = await Promise.all([getTrabajos(), getAgendaMes(year, month)])
+      const todos = trabajosRes.trabajos
+      setTodosTrabajos(todos)
+      setTrabajos(todos.filter((t) => t.fecha_trabajo && t.estado !== 'rechazado'))
+      setSinFecha(todos.filter((t) => !t.fecha_trabajo && ['evaluado', 'enviado'].includes(t.estado)))
 
-      const notasMap = {}
-      notasRes.notas.forEach((n) => {
-        notasMap[n.fecha.slice(0, 10)] = n.nota
+      const itemsMap = {}
+      agendaRes.items.forEach((it) => {
+        const key = it.fecha.slice(0, 10)
+        if (!itemsMap[key]) itemsMap[key] = []
+        itemsMap[key].push(it)
       })
-      setNotas(notasMap)
+      setItemsPorDia(itemsMap)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -98,18 +106,47 @@ export default function AgendaPage() {
   function abrirDia(d) {
     const key = fechaKey(year, month, d)
     setDiaSeleccionado(key)
-    setNotaTexto(notas[key] || '')
+    setNuevoTexto('')
+    setNuevaHora('')
+    setNuevoTrabajoId('')
   }
 
-  async function handleGuardarNota() {
-    setGuardandoNota(true)
+  async function handleAgregarItem() {
+    if (!nuevoTexto.trim()) return
+    setGuardandoItem(true)
     try {
-      await guardarNotaDia(diaSeleccionado, notaTexto)
-      setNotas((prev) => ({ ...prev, [diaSeleccionado]: notaTexto }))
+      const res = await createAgendaItem({
+        fecha: diaSeleccionado,
+        texto: nuevoTexto.trim(),
+        hora: nuevaHora || null,
+        trabajo_id: nuevoTrabajoId || null,
+      })
+      const trabajoAsociado = nuevoTrabajoId ? todosTrabajos.find((t) => String(t.id) === String(nuevoTrabajoId)) : null
+      const itemConDatos = { ...res.item, trabajo_cliente_nombre: trabajoAsociado?.cliente_nombre || null }
+      setItemsPorDia((prev) => {
+        const dia = [...(prev[diaSeleccionado] || []), itemConDatos]
+        dia.sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'))
+        return { ...prev, [diaSeleccionado]: dia }
+      })
+      setNuevoTexto('')
+      setNuevaHora('')
+      setNuevoTrabajoId('')
     } catch (err) {
       setError(err.message)
     } finally {
-      setGuardandoNota(false)
+      setGuardandoItem(false)
+    }
+  }
+
+  async function handleBorrarItem(id) {
+    try {
+      await deleteAgendaItem(id)
+      setItemsPorDia((prev) => ({
+        ...prev,
+        [diaSeleccionado]: (prev[diaSeleccionado] || []).filter((it) => it.id !== id),
+      }))
+    } catch (err) {
+      setError(err.message)
     }
   }
 
@@ -124,6 +161,8 @@ export default function AgendaPage() {
   const proximos = ordenados.filter((t) => new Date(t.fecha_trabajo) >= hoy)
 
   const diaSeleccionadoTrabajos = diaSeleccionado ? (trabajosPorDia[diaSeleccionado] || []) : []
+  const diaSeleccionadoItems = diaSeleccionado ? (itemsPorDia[diaSeleccionado] || []) : []
+  const trabajosParaAsociar = todosTrabajos.filter((t) => ESTADOS_TRABAJO_ABIERTOS.includes(t.estado))
   const hoyKey = fechaKey(hoy.getFullYear(), hoy.getMonth() + 1, hoy.getDate())
 
   return (
@@ -158,7 +197,7 @@ export default function AgendaPage() {
 
             const key = fechaKey(year, month, d)
             const trabajosDia = trabajosPorDia[key] || []
-            const tieneNota = !!notas[key]
+            const tieneItems = (itemsPorDia[key] || []).length > 0
             const confirmado = trabajosDia.some((t) => ['aceptado', 'por_cobrar', 'cobrado'].includes(t.estado))
             const pendiente = !confirmado && trabajosDia.some((t) => ['enviado', 'cotizado'].includes(t.estado))
             const esHoy = key === hoyKey
@@ -183,7 +222,7 @@ export default function AgendaPage() {
                     ))}
                   </div>
                 )}
-                {tieneNota && <span className="absolute top-0.5 right-0.5 text-[8px]">📝</span>}
+                {tieneItems && <span className="absolute top-0.5 right-0.5 text-[8px]">📝</span>}
               </button>
             )
           })}
@@ -216,31 +255,80 @@ export default function AgendaPage() {
               </div>
             )}
 
-            <label className="block text-xs text-nz-text2 mb-1.5">Nota del día</label>
-            <textarea
-              value={notaTexto}
-              onChange={(e) => setNotaTexto(e.target.value)}
-              rows={4}
-              placeholder="Ej: medio día en lo de Pérez, medio día en lo de Gómez"
-              className="w-full bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2 text-sm outline-none focus:border-nz-green resize-none mb-3"
-            />
+            <label className="block text-xs text-nz-text2 mb-1.5">Anotaciones del día</label>
+            {diaSeleccionadoItems.length === 0 && (
+              <div className="text-xs text-nz-text2 mb-3">Todavía no hay anotaciones para este día.</div>
+            )}
+            <div className="flex flex-col gap-2 mb-3">
+              {diaSeleccionadoItems.map((it) => (
+                <div key={it.id} className="flex items-center gap-2 bg-nz-surface2 border border-nz-border rounded-lg px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm">
+                      {it.hora && <span className="font-mono text-nz-green mr-1.5">{it.hora.slice(0, 5)}</span>}
+                      {it.texto}
+                    </div>
+                    {it.trabajo_id && (
+                      <Link
+                        to={`/trabajos/${it.trabajo_id}`}
+                        className="text-xs text-nz-green no-underline hover:underline"
+                      >
+                        {it.trabajo_cliente_nombre || 'Ver trabajo'} →
+                      </Link>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleBorrarItem(it.id)}
+                    className="text-nz-red bg-transparent border-none cursor-pointer text-lg px-1 flex-shrink-0"
+                    aria-label="Borrar"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDiaSeleccionado(null)}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-nz-surface2 text-nz-text2 border border-nz-border"
+            <div className="bg-nz-surface2 border border-dashed border-nz-border rounded-lg p-3 mb-3">
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="time"
+                  value={nuevaHora}
+                  onChange={(e) => setNuevaHora(e.target.value)}
+                  className="w-[110px] bg-nz-surface border border-nz-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-nz-green"
+                />
+                <input
+                  type="text"
+                  value={nuevoTexto}
+                  onChange={(e) => setNuevoTexto(e.target.value)}
+                  placeholder="Ej: visita a obra"
+                  className="flex-1 bg-nz-surface border border-nz-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-nz-green"
+                />
+              </div>
+              <select
+                value={nuevoTrabajoId}
+                onChange={(e) => setNuevoTrabajoId(e.target.value)}
+                className="w-full bg-nz-surface border border-nz-border rounded-lg px-2 py-1.5 text-sm outline-none focus:border-nz-green mb-2"
               >
-                Cerrar
-              </button>
+                <option value="">Sin trabajo asociado</option>
+                {trabajosParaAsociar.map((t) => (
+                  <option key={t.id} value={t.id}>{t.cliente_nombre} {t.descripcion ? `· ${t.descripcion}` : ''}</option>
+                ))}
+              </select>
               <button
-                onClick={handleGuardarNota}
-                disabled={guardandoNota}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-nz-green text-black disabled:opacity-50 flex items-center justify-center gap-2"
+                onClick={handleAgregarItem}
+                disabled={guardandoItem || !nuevoTexto.trim()}
+                className="w-full py-2 rounded-lg text-sm font-semibold bg-nz-green text-black disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {guardandoNota && <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
-                {guardandoNota ? 'Guardando...' : 'Guardar nota'}
+                {guardandoItem && <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />}
+                {guardandoItem ? 'Agregando...' : '+ Agregar anotación'}
               </button>
             </div>
+
+            <button
+              onClick={() => setDiaSeleccionado(null)}
+              className="w-full py-2.5 rounded-lg text-sm font-medium bg-nz-surface2 text-nz-text2 border border-nz-border"
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       )}

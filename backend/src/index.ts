@@ -12,7 +12,7 @@ import gastosRoutes from './routes/gastos'
 import dashboardRoutes from './routes/dashboard'
 import asistenteRoutes from './routes/asistente'
 import preciosRoutes from './routes/precios'
-import notasRoutes from './routes/notas'
+import agendaRoutes from './routes/agenda'
 import pushRoutes from './routes/push'
 import vozRoutes from './routes/voz'
 import { runScheduledChecks } from './scheduled'
@@ -51,7 +51,7 @@ app.route('/api/asistente', asistenteRoutes)
 
 app.route('/api/precios', preciosRoutes)
 
-app.route('/api/notas', notasRoutes)
+app.route('/api/agenda', agendaRoutes)
 
 app.route('/api/push', pushRoutes)
 

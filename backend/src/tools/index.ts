@@ -5,7 +5,7 @@ import { materialesTools, executeMaterialTool } from './materiales'
 import { gastosTools, executeGastoTool } from './gastos'
 import { dashboardTools, executeDashboardTool } from './dashboard'
 import { preciosTools, executePreciosTool } from './precios'
-import { notasTools, executeNotaTool } from './notas'
+import { agendaTools, executeAgendaTool } from './agenda'
 
 export const allTools = [
   ...presupuestosTools,
@@ -15,7 +15,7 @@ export const allTools = [
   ...gastosTools,
   ...dashboardTools,
   ...preciosTools,
-  ...notasTools,
+  ...agendaTools,
 ]
 
 const toolGroups = [
@@ -26,7 +26,7 @@ const toolGroups = [
   { names: gastosTools.map((t) => t.name), execute: executeGastoTool },
   { names: dashboardTools.map((t) => t.name), execute: executeDashboardTool },
   { names: preciosTools.map((t) => t.name), execute: executePreciosTool },
-  { names: notasTools.map((t) => t.name), execute: executeNotaTool },
+  { names: agendaTools.map((t) => t.name), execute: executeAgendaTool },
 ]
 
 export async function executeTool(name: string, input: any, databaseUrl: string) {
