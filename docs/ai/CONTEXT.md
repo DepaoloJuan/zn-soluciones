@@ -1,5 +1,5 @@
 # CONTEXT.md — NZ Soluciones
-_Última actualización: 2026-07-21_
+_Última actualización: 2026-07-22_
 
 ## Qué es esto
 App de gestión interna para NZ Soluciones, empresa de construcción en seco y mantenimiento (dueño: Nico Zarate). Permite calcular materiales, armar presupuestos, gestionar trabajos y clientes, y tiene un asistente IA integrado con voz.
@@ -13,6 +13,7 @@ App de gestión interna para NZ Soluciones, empresa de construcción en seco y m
 | Backend | Hono 4 sobre Cloudflare Workers, TypeScript |
 | Base de datos | Neon (PostgreSQL serverless) via `@neondatabase/serverless` |
 | Auth backend | JWT verificado con JWKS de Neon (`jose`), tabla `allowed_emails` como whitelist |
+| Almacenamiento de archivos | Cloudflare R2 (bucket `nz-soluciones-archivos`, binding `ARCHIVOS`) |
 | IA chat | Gemini 3.6 Flash (`generateContent`) vía REST |
 | IA voz | Gemini 2.5 Flash Native Audio Preview (`BidiGenerateContent`) vía WebSocket, autenticado con token en query string |
 | Push | Web Push API, claves VAPID propias, `@pushforge/builder` |
@@ -28,16 +29,19 @@ calculadoras/ (frontend React/Vite)
 ├── src/
 │   ├── App.jsx              — Router raíz con todas las rutas protegidas
 │   ├── lib/
-│   │   ├── api.js           — Todas las llamadas al backend (fetch + Bearer token)
+│   │   ├── api.js           — Todas las llamadas al backend (fetch + Bearer token), incluye subida/descarga/borrado de archivos (FormData, blob download)
 │   │   ├── auth.ts          — authClient (BetterAuth/Neon)
 │   │   ├── estados.js       — ESTADOS_TRABAJO / ESTADOS_TRABAJO_ABIERTOS (fuente única del pipeline de estados)
 │   │   └── push.js          — activarNotificaciones() con Web Push API
+│   ├── data/
+│   │   └── datosPago.js     — DATOS_PAGO (alias/beneficiario de MercadoPago), compartida por PresupuestoLibrePage e ImportarPresupuestoPage
 │   ├── hooks/
 │   │   └── useVozLive.js    — WebSocket a /api/voz (con token), captura mic, reproduce PCM de Gemini, expone estado `error` con timeout de conexión (12s)
 │   ├── components/
-│   │   ├── Navbar.jsx               — Navbar agrupada: Trabajos / Clientes / Agenda / Herramientas▾ (Cielorraso, Presupuesto libre, Materiales)
+│   │   ├── Navbar.jsx               — Navbar agrupada: Trabajos / Clientes / Agenda / Herramientas▾ (Cielorraso, Presupuesto libre, Materiales, Cargar presupuesto ya enviado)
 │   │   ├── AsistenteWidget.jsx      — Widget de chat flotante + modo voz
-│   │   ├── GuardarPresupuestoModal.jsx — Modal único de "guardar presupuesto" (cliente/trabajo existente o nuevo), usado por Calculator y PresupuestoLibrePage
+│   │   ├── GuardarPresupuestoModal.jsx — Modal único de "guardar presupuesto" (cliente/trabajo existente o nuevo), usado por Calculator, PresupuestoLibrePage e ImportarPresupuestoPage; `onSaved(trabajoId, presupuestoId)`
+│   │   ├── ArchivosSection.jsx      — Sección de archivos adjuntos de un trabajo (listar/subir/descargar/borrar), embebida en TrabajoDetallePage
 │   │   ├── ProtectedRoute.jsx
 │   │   └── ConfirmModal.jsx
 │   ├── setupTests.js        — jest-dom para Vitest+RTL
@@ -46,12 +50,12 @@ calculadoras/ (frontend React/Vite)
 backend/ (Cloudflare Worker, Hono)
 ├── src/
 │   ├── index.ts             — App Hono, monta todas las rutas, expone scheduled hook
-│   ├── types.ts             — Bindings (env vars del Worker)
+│   ├── types.ts             — Bindings (env vars del Worker, incluye `ARCHIVOS: R2Bucket`)
 │   ├── materiales.ts        — Lógica de cálculo de materiales, recomendadores de masilla/cinta
 │   ├── push.ts              — enviarPushATodos() — itera suscripciones y envía notifs
 │   ├── scheduled.ts         — Cron: recordatorio día siguiente + alerta trabajos vencidos (cada bloque con try/catch propio)
 │   ├── middleware/auth.ts   — requireAuth (header) + verifyAuthToken() extraída y reusable (también la usa la ruta de voz, con token por query string)
-│   ├── routes/              — Un archivo por recurso (incluye agenda.ts, flujoCompleto.ts)
+│   ├── routes/              — Un archivo por recurso (incluye agenda.ts, flujoCompleto.ts, archivos.ts)
 │   └── tools/               — Herramientas para Gemini (chat + voz comparten el mismo set; incluye agenda.ts, flujoCompleto.ts)
 ```
 
@@ -65,6 +69,8 @@ backend/ (Cloudflare Worker, Hono)
 
 **Flujo "todo en uno" (crear_flujo_completo):** tanto el asistente (chat/voz) como el frontend web (`GuardarPresupuestoModal` → `POST /api/flujo-completo`) pueden crear cliente + trabajo + presupuesto + agenda en una sola sentencia SQL atómica con CTEs encadenados. Ver detalle en Decisiones de diseño.
 
+**Flujo archivos adjuntos:** cualquier trabajo (creado por cualquier vía) puede tener archivos adjuntos desde su ficha. `ArchivosSection.jsx` llama a `/api/archivos` (`archivos.ts`, nuevo), que sube el binario a un bucket R2 y guarda los metadatos en la tabla `archivos`. No pasa por el asistente IA ni por `crear_flujo_completo`: es un flujo aparte, disparado siempre desde la UI.
+
 ## Rutas del frontend
 
 | Path | Componente | Descripción |
@@ -75,8 +81,9 @@ backend/ (Cloudflare Worker, Hono)
 | `/tabique` | TabiquePage | Calculadora de materiales tabique (placeholder, no linkeada desde el navbar) |
 | `/presupuesto` | PresupuestoPage | Vista previa para imprimir (no linkeada desde el navbar, se llega vía botón "Vista previa" del Calculator) |
 | `/presupuesto-libre` | PresupuestoLibrePage | Presupuesto libre (items manuales) |
+| `/importar-presupuesto` | ImportarPresupuestoPage | Cargar un presupuesto ya armado y enviado por fuera de la app (descripción, monto, PDF opcional) |
 | `/trabajos` | TrabajosPage | Lista de trabajos, con buscador de clientes al crear uno nuevo |
-| `/trabajos/:id` | TrabajoDetallePage | Detalle, presupuestos, gastos, estado; link a la ficha del cliente |
+| `/trabajos/:id` | TrabajoDetallePage | Detalle, presupuestos, gastos, archivos adjuntos, estado; link a la ficha del cliente |
 | `/presupuestos/:id` | PresupuestoDetallePage | Vista de presupuesto guardado |
 | `/clientes` | ClientesPage | Lista de clientes |
 | `/clientes/:id` | ClienteDetallePage | Historial de trabajos del cliente; botón "+ Nuevo trabajo" (preselecciona el cliente en TrabajosPage) |
@@ -99,12 +106,16 @@ backend/ (Cloudflare Worker, Hono)
 | GET/POST/PATCH/DELETE | `/api/clientes[/:id]` | CRUD clientes |
 | GET | `/api/gastos/trabajo/:id` | Gastos de un trabajo |
 | POST/DELETE | `/api/gastos[/:id]` | Crear/borrar gasto |
-| GET | `/api/dashboard` | KPIs: pendientes, próximos, ganancia neta, estados |
+| GET | `/api/dashboard` | KPIs: pendientes, próximos, ganancia neta, estados (calculados siempre desde `trabajos.monto_cobrado` + `estado='cobrado'`) |
 | GET/POST/DELETE | `/api/asistente[/historial][/nueva]` | Historial y envío al asistente IA |
 | GET | `/api/agenda/mes/:year/:month` | Ítems de agenda de un mes (para pintar el calendario) |
 | GET/POST | `/api/agenda[/:fecha]` | Listar ítems de un día / crear ítem de agenda |
 | PATCH/DELETE | `/api/agenda/:id` | Actualizar/borrar un ítem de agenda puntual |
 | POST | `/api/flujo-completo` | Crea, atómicamente, cualquier combinación de cliente+trabajo+presupuesto+agenda en un solo request |
+| GET | `/api/archivos/trabajo/:trabajoId` | Listar archivos adjuntos de un trabajo |
+| POST | `/api/archivos/trabajo/:trabajoId` | Subir un archivo (multipart, campo `archivo`, `presupuesto_id` opcional; máx 20MB) |
+| GET | `/api/archivos/:id/descargar` | Descargar el binario de un archivo (stream desde R2) |
+| DELETE | `/api/archivos/:id` | Borrar un archivo (R2 primero, fila de la base después) |
 | GET | `/api/push/vapid-public-key` | Clave pública VAPID |
 | POST | `/api/push/suscribir` | Registrar suscripción push |
 | WS | `/api/voz?token=...` | WebSocket de voz en tiempo real (Gemini Live), token de auth por query string |
@@ -160,6 +171,19 @@ _Inferida del código (no existe `db_schema_dump.sql` aún). Pedile a Juanma que
 | categoria | text | nullable |
 | created_at | timestamptz | |
 
+### archivos
+_Nueva. Archivos adjuntos de un trabajo (ej: PDF de un presupuesto enviado por fuera de la app), con el binario en Cloudflare R2 y solo los metadatos en Postgres._
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | serial | PK |
+| trabajo_id | int | FK → trabajos.id, NOT NULL, ON DELETE CASCADE |
+| presupuesto_id | int | FK → presupuestos.id, nullable |
+| r2_key | text | NOT NULL — key del objeto en el bucket `nz-soluciones-archivos` |
+| nombre_original | text | NOT NULL — nombre del archivo tal como lo subió el usuario |
+| tamano_bytes | int | NOT NULL |
+| tipo_mime | text | nullable |
+| created_at | timestamptz | default NOW() |
+
 ### materials
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -171,7 +195,7 @@ _Inferida del código (no existe `db_schema_dump.sql` aún). Pedile a Juanma que
 | per_m2 | numeric | cantidad por m2 |
 | round_type | text | ceil / decimal |
 | sort_order | int | orden en pantalla |
-| price | numeric | **nueva columna** — precio unitario, default global del catálogo (antes vivía solo en localStorage del navegador) |
+| price | numeric | precio unitario, default global del catálogo (antes vivía solo en localStorage del navegador) |
 
 ### agenda_items
 | Columna | Tipo | Notas |
@@ -243,7 +267,11 @@ _Inferida del código (no existe `db_schema_dump.sql` aún). Pedile a Juanma que
 - **No hay ORM**: queries con template literals de `@neondatabase/serverless` (`sql\`...\``). Updates dinámicos usan `sql.query()` con placeholders `$N` para construir el SET dinámicamente. Las queries dinámicas de `crear_flujo_completo` arman placeholders con un helper `ph()` que empuja a un array de params compartido.
 - **`materials` en presupuestos es JSONB**: guarda el snapshot completo de materiales+cantidades al momento de presupuestar, no referencias. Así el precio no cambia si después se edita un material.
 - **Agenda con múltiples ítems por día**: reemplaza el modelo viejo de "una nota de texto por día" (`notas_agenda`, fecha UNIQUE). Ahora se puede llamar `crear_agenda_item` varias veces para el mismo día; cada ítem tiene hora opcional y trabajo asociado opcional. Sin edición inline en la UI por ahora (solo alta/borrado) — simplificación consciente.
-- **`GuardarPresupuestoModal` unifica el flujo de guardado**: antes estaba duplicado en `Calculator.jsx` y `PresupuestoLibrePage.jsx` (cada uno con su propio modal y su propia secuencia de 3 llamadas no atómicas createCliente→createTrabajo→createPresupuesto). Ahora ambos usan el mismo componente, que llama a `POST /api/flujo-completo` en una sola request atómica.
+- **`GuardarPresupuestoModal` unifica el flujo de guardado**: antes estaba duplicado en `Calculator.jsx` y `PresupuestoLibrePage.jsx` (cada uno con su propio modal y su propia secuencia de 3 llamadas no atómicas createCliente→createTrabajo→createPresupuesto). Ahora ambos usan el mismo componente, que llama a `POST /api/flujo-completo` en una sola request atómica. Su callback `onSaved` pasó de `(trabajoId)` a `(trabajoId, presupuestoId)` (retrocompatible) para que `ImportarPresupuestoPage` pueda asociar el archivo subido al presupuesto recién creado.
+- **Archivos: binario en R2, metadatos en Postgres** — el bucket `nz-soluciones-archivos` guarda solo bytes, la tabla `archivos` guarda la referencia (`r2_key`) y los metadatos. Subida y borrado son deliberadamente asimétricos para evitar huérfanos con un driver HTTP-based que no tiene transacciones cross-storage: al subir, primero va a R2 y recién después se inserta la fila (si el insert falla, se borra lo subido a R2); al borrar, primero se borra de R2 y recién después la fila (si falla el borrado en R2, no se toca la fila, así el usuario puede reintentar sin perder la referencia).
+- **Descarga de archivos vía blob, no `<a href>` directo**: la ruta de descarga requiere el header `Authorization`, que un link normal no puede mandar. El frontend hace `fetch` con el token, arma un blob URL y dispara el click con un `<a>` temporal (`descargarArchivo()` en `lib/api.js`).
+- **"Importar presupuesto ya enviado" no crea un flujo nuevo de facturación**: `ImportarPresupuestoPage` reutiliza `crear_flujo_completo` con categoría `libre` (mismo mecanismo que `PresupuestoLibrePage`). No hizo falta tocar el dashboard de ganancias porque `dashboard.ts` siempre calculó todo desde `trabajos.monto_cobrado` + `estado='cobrado'`, nunca leyó `presupuestos.total` — con solo marcar el trabajo como cobrado ya impacta correctamente.
+- **Se descartó Canva Autofill para el diseño de los presupuestos** (investigado, no implementado): la Autofill API de Canva requiere cuenta Enterprise, inviable para este negocio, y no existe edición embebida real de Canva dentro de una página de terceros. Si se retoma en el futuro, las alternativas viables son recrear el diseño en HTML propio o superponer texto sobre una imagen de fondo exportada de Canva.
 
 ## Estado actual
 
@@ -251,22 +279,25 @@ _Inferida del código (no existe `db_schema_dump.sql` aún). Pedile a Juanma que
 - Calculadoras de cielorraso y tabique
 - Gestión completa de trabajos, clientes, presupuestos y gastos, con links cruzados trabajo↔cliente
 - Presupuesto libre (PresupuestoLibrePage): items manuales, guarda vía `GuardarPresupuestoModal` → `/api/flujo-completo`
+- Importar presupuesto ya enviado (ImportarPresupuestoPage): carga presupuestos armados fuera de la app (descripción, monto, PDF opcional), reutiliza `GuardarPresupuestoModal` y `crear_flujo_completo` con categoría `libre`
+- Archivos adjuntos por trabajo (ArchivosSection): subir/listar/descargar/borrar, binario en Cloudflare R2 y metadatos en la tabla `archivos`, límite 20MB validado en cliente y servidor
 - Dashboard con KPIs y gráfico de estados
 - Agenda con calendario mensual y múltiples ítems por día (hora + trabajo asociado opcional)
 - Precio de materiales persistente en el catálogo (`materials.price`), editable desde el Calculator o desde MaterialesAdminPage
 - Asistente IA (chat texto + modo voz en tiempo real), con tool combinado `crear_flujo_completo` para pedidos multi-paso
 - PWA instalable (manifest + service worker)
 - Push notifications con cron de recordatorios diarios (ahora con try/catch por bloque, para que un fallo en un chequeo no tumbe el otro)
-- Tests: Vitest en frontend (7 tests: ProtectedRoute + apiFetch) y backend (5 tests: verifyAuthToken + gate de auth de voz.ts)
+- Tests: Vitest en frontend (7 tests: ProtectedRoute + apiFetch) y backend (17 tests: verifyAuthToken + gate de auth de voz.ts + `archivos.ts` — subida, listado, descarga y borrado, incluyendo casos de rollback en R2 y de tamaño excedido)
 
 **Pendiente / en progreso:**
 - `precios_items` / `/api/precios`: ruta y tools creadas, pero no hay UI dedicada aún (el asistente puede usarlo por voz)
 - Orquestación de IA con `crear_flujo_completo`: implementado y funcionando en al menos un caso de prueba real, pero no hay validación exhaustiva de que Gemini elija bien entre el tool combinado y los tools sueltos en todos los casos
+- Diseño de presupuestos vía Canva: explorado, descartado por ahora (ver Decisiones de diseño). Sigue pendiente de conversación con Nico si se quiere retomar con una alternativa distinta a la Autofill API
 
 **Deuda técnica conocida:**
 - `useVozLive.js` usa `ScriptProcessorNode` (deprecado); hay un comentario interno indicando migrar a AudioWorklet si aparecen glitches
 - No existe dump de schema en `docs/ai/db_schema_dump.sql`; el esquema de este documento fue inferido del código
-- Cobertura de tests todavía parcial (7 frontend + 5 backend) — no cubre rutas CRUD, tools del asistente, ni `crear_flujo_completo`
+- Cobertura de tests todavía parcial — no cubre rutas CRUD de trabajos/clientes/presupuestos/gastos, tools del asistente, ni `crear_flujo_completo`
 - El modelo de voz (`gemini-2.5-flash-native-audio-preview-09-2025`) sigue con el string hardcodeado: a diferencia del modelo de texto (confirmado y corregido a `gemini-3.6-flash`), no se pudo confirmar con certeza si este nombre de la Live API sigue vigente. Probarlo en una llamada real tras el próximo deploy.
 - `AgendaPage.jsx` no tiene edición inline de ítems de agenda (solo alta/borrado) — simplificación consciente, no un bug
 
@@ -278,5 +309,6 @@ _Inferida del código (no existe `db_schema_dump.sql` aún). Pedile a Juanma que
 - Estados de trabajos: siempre snake_case (`por_cobrar`, no `porCobrar`), importados de `lib/estados.js`, nunca hardcodeados de nuevo en cada página
 - Nuevas rutas del backend: crear archivo en `backend/src/routes/`, montarlo en `index.ts` con `app.route()`
 - Nuevos tools del asistente: crear en `backend/src/tools/`, exportar array de definiciones y función `execute*`, registrar en `tools/index.ts`
-- El frontend consume `VITE_BACKEND_URL` para todas las llamadas; no hay calls directas a Neon desde el cliente
+- Constantes de negocio compartidas entre páginas van en `calculadoras/src/data/` (ej: `datosPago.js`), no hardcodeadas por duplicado en cada page
+- El frontend consume `VITE_BACKEND_URL` para todas las llamadas; no hay calls directas a Neon ni a R2 desde el cliente
 - Tests: `*.test.ts`/`*.test.jsx` al lado del archivo que testean, corridos con `npm test` (vitest run) en cada paquete por separado
