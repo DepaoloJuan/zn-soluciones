@@ -9,6 +9,7 @@ import trabajosRoutes from './routes/trabajos'
 import presupuestosRoutes from './routes/presupuestos'
 import clientesRoutes from './routes/clientes'
 import gastosRoutes from './routes/gastos'
+import archivosRoutes from './routes/archivos'
 import dashboardRoutes from './routes/dashboard'
 import asistenteRoutes from './routes/asistente'
 import preciosRoutes from './routes/precios'
@@ -45,6 +46,8 @@ app.route('/api/presupuestos', presupuestosRoutes)
 app.route('/api/clientes', clientesRoutes)
 
 app.route('/api/gastos', gastosRoutes)
+
+app.route('/api/archivos', archivosRoutes)
 
 app.route('/api/dashboard', dashboardRoutes)
 

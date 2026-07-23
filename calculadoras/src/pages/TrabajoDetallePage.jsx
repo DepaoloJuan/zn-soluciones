@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getTrabajo, updateTrabajo, enviarPresupuesto, getGastos, createGasto, deleteGasto } from '../lib/api'
 import ConfirmModal from '../components/ConfirmModal'
+import ArchivosSection from '../components/ArchivosSection'
 
 const ESTADOS = ['evaluado', 'cotizado', 'enviado', 'aceptado', 'por_cobrar', 'cobrado', 'rechazado']
 
@@ -252,6 +253,8 @@ export default function TrabajoDetallePage() {
           </div>
         ))}
       </div>
+
+      <ArchivosSection trabajoId={id} />
 
       <h2 className="text-lg font-bold mb-3 mt-8">Gastos</h2>
       <div className="bg-nz-surface border border-nz-border rounded-xl overflow-hidden mb-4">

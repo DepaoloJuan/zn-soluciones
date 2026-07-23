@@ -2,13 +2,19 @@ import { authClient } from './auth'
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL
 
-async function apiFetch(path, options = {}) {
+async function getAuthToken() {
   const { data } = await authClient.getSession()
   const token = data?.session?.token
 
   if (!token) {
     throw new Error('No se pudo obtener la sesión. Volvé a iniciar sesión.')
   }
+
+  return token
+}
+
+async function apiFetch(path, options = {}) {
+  const token = await getAuthToken()
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -19,13 +25,75 @@ async function apiFetch(path, options = {}) {
     },
   })
 
-  const body = await res.json()
+  const body = await res.json().catch(() => ({}))
 
   if (!res.ok) {
     throw new Error(body.error || 'Error en la petición')
   }
 
   return body
+}
+
+// Para subir archivos (FormData): no forzamos Content-Type, el browser arma
+// el boundary del multipart solo si no lo pisamos nosotros.
+async function apiUploadFile(path, formData) {
+  const token = await getAuthToken()
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+
+  const body = await res.json().catch(() => ({}))
+
+  if (!res.ok) {
+    throw new Error(body.error || 'Error en la petición')
+  }
+
+  return body
+}
+
+// Descarga autenticada: el endpoint requiere el header Authorization, así que
+// no puede ser un <a href> directo. Trae el archivo como blob y devuelve una
+// URL temporal (revocarla con URL.revokeObjectURL después de usarla).
+export async function descargarArchivo(id) {
+  const token = await getAuthToken()
+
+  const res = await fetch(`${BASE_URL}/api/archivos/${id}/descargar`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || 'No se pudo descargar el archivo')
+  }
+
+  const disposition = res.headers.get('Content-Disposition') || ''
+  const match = disposition.match(/filename="(.+)"/)
+  const nombre = match ? match[1] : `archivo-${id}`
+
+  const blob = await res.blob()
+  return { url: URL.createObjectURL(blob), nombre }
+}
+
+export function getArchivosTrabajo(trabajoId) {
+  return apiFetch(`/api/archivos/trabajo/${trabajoId}`)
+}
+
+export function uploadArchivo(trabajoId, file, { presupuestoId } = {}) {
+  const formData = new FormData()
+  formData.append('archivo', file)
+  if (presupuestoId) {
+    formData.append('presupuesto_id', String(presupuestoId))
+  }
+  return apiUploadFile(`/api/archivos/trabajo/${trabajoId}`, formData)
+}
+
+export function deleteArchivo(id) {
+  return apiFetch(`/api/archivos/${id}`, {
+    method: 'DELETE',
+  })
 }
 
 export function getMaterials(category) {

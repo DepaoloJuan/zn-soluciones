@@ -4,4 +4,5 @@ export type Bindings = {
   VAPID_PUBLIC_KEY: string
   VAPID_PRIVATE_KEY: string
   GEMINI_API_KEY: string
+  ARCHIVOS: R2Bucket
 }
