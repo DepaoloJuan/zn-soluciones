@@ -11,6 +11,7 @@ const NAV_GROUPS = [
     items: [
       { label: "Cielorraso", to: "/cielorraso" },
       { label: "Presupuesto libre", to: "/presupuesto-libre" },
+      { label: "Cargar presupuesto ya enviado", to: "/importar-presupuesto" },
       { label: "Materiales", to: "/admin/materiales" },
     ],
   },

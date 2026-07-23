@@ -96,7 +96,7 @@ export default function GuardarPresupuestoModal({
 
       const resultado = await crearFlujoCompleto(payload)
 
-      onSaved(resultado.trabajo.id)
+      onSaved(resultado.trabajo.id, resultado.presupuesto?.id)
     } catch (err) {
       setSaveError(err.message)
     } finally {

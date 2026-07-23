@@ -4,6 +4,7 @@ import CielorrasoPage from './pages/CielorrasoPage'
 import TabiquePage from './pages/TabiquePage'
 import PresupuestoPage from './pages/PresupuestoPage'
 import PresupuestoLibrePage from './pages/PresupuestoLibrePage'
+import ImportarPresupuestoPage from './pages/ImportarPresupuestoPage'
 import LoginPage from './pages/LoginPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import MaterialesAdminPage from './pages/MaterialesAdminPage'
@@ -33,6 +34,7 @@ function AppContent() {
         <Route path="/tabique" element={<ProtectedRoute><TabiquePage /></ProtectedRoute>} />
         <Route path="/presupuesto" element={<ProtectedRoute><PresupuestoPage /></ProtectedRoute>} />
         <Route path="/presupuesto-libre" element={<ProtectedRoute><PresupuestoLibrePage /></ProtectedRoute>} />
+        <Route path="/importar-presupuesto" element={<ProtectedRoute><ImportarPresupuestoPage /></ProtectedRoute>} />
         <Route path="/admin/materiales" element={<ProtectedRoute><MaterialesAdminPage /></ProtectedRoute>} />
         <Route path="/trabajos" element={<ProtectedRoute><TrabajosPage /></ProtectedRoute>} />
         <Route path="/trabajos/:id" element={<ProtectedRoute><TrabajoDetallePage /></ProtectedRoute>} />

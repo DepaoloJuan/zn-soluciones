@@ -3,11 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { formatNumber } from "../data/materials";
 import { getClientes, createCliente } from '../lib/api'
 import GuardarPresupuestoModal from '../components/GuardarPresupuestoModal'
-
-const DATOS_PAGO = {
-  alias: "nzsoluciones.mp",
-  beneficiario: "Zarate Diego Nicolas",
-};
+import { DATOS_PAGO } from '../data/datosPago'
 
 export default function PresupuestoLibrePage() {
   const navigate = useNavigate()
